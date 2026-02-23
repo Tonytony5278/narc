@@ -1,0 +1,21 @@
+# Keep Docker build context lean
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.env
+.env.local
+*.log
+.DS_Store
+Thumbs.db
+coverage
+.nyc_output
+.vite
+.pg-data
+**/uploads
+*.pem
+*.key
+*.crt
+DEPLOYMENT.md
+smoke-test.mjs

@@ -1,0 +1,90 @@
+version: '3.9'
+
+# ── NARC Pharmacovigilance Platform — Production Stack ──────────────────────
+#
+# Services:
+#   postgres   PostgreSQL 16 (persistent volume)
+#   backend    Express API + Claude AE detection
+#   dashboard  Nginx serving the React SPA + /api proxy
+#
+# Quick start:
+#   cp .env.example .env   # fill in ANTHROPIC_API_KEY, DB_PASSWORD, JWT_SECRET
+#   docker compose up --build -d
+#   open http://localhost
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL 16 ──────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB:       narc
+      POSTGRES_USER:     narc
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required — see .env.example}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U narc -d narc"]
+      interval: 5s
+      timeout:  3s
+      retries:  10
+
+  # ── Backend API ────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context:    .
+      dockerfile: packages/backend/Dockerfile
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # ── Required ──────────────────────────────────────────────────────────
+      DATABASE_URL:      postgresql://narc:${DB_PASSWORD}@postgres:5432/narc
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}
+      JWT_SECRET:        ${JWT_SECRET:?JWT_SECRET is required}
+      NODE_ENV:          production
+      PORT:              3001
+      NARC_AUTH:         "true"
+
+      # ── Optional: SMTP alert emails ───────────────────────────────────────
+      ALERT_SMTP_HOST:  ${ALERT_SMTP_HOST:-}
+      ALERT_SMTP_PORT:  ${ALERT_SMTP_PORT:-587}
+      ALERT_SMTP_USER:  ${ALERT_SMTP_USER:-}
+      ALERT_SMTP_PASS:  ${ALERT_SMTP_PASS:-}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-}
+      ALERT_EMAIL_TO:   ${ALERT_EMAIL_TO:-}
+      DASHBOARD_URL:    ${DASHBOARD_URL:-http://localhost}
+
+      # ── Optional: IMAP mail monitor ───────────────────────────────────────
+      IMAP_HOST:    ${IMAP_HOST:-}
+      IMAP_PORT:    ${IMAP_PORT:-993}
+      IMAP_USER:    ${IMAP_USER:-}
+      IMAP_PASS:    ${IMAP_PASS:-}
+      IMAP_MAILBOX: ${IMAP_MAILBOX:-INBOX}
+    healthcheck:
+      test:     ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 10s
+      timeout:  5s
+      retries:  5
+    # Uncomment to expose the API directly (e.g. for local debugging)
+    # ports:
+    #   - "3001:3001"
+
+  # ── Dashboard (nginx) ──────────────────────────────────────────────────────
+  dashboard:
+    build:
+      context:    .
+      dockerfile: packages/dashboard/Dockerfile
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${DASHBOARD_PORT:-80}:80"
+
+volumes:
+  pgdata:
+    driver: local
