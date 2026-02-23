@@ -20,6 +20,8 @@ export interface E2BReaction {
   severity: string;
   urgency: string;
   meddra: {
+    lltCode: string;    // Lowest Level Term (most specific; defaults to PT values when no distinct LLT)
+    lltTerm: string;
     ptCode: string;
     ptTerm: string;
     hltCode: string;
@@ -304,8 +306,9 @@ export function buildE2BXml(options: E2BXmlOptions): string {
       `        <!-- PT Code: ${m.ptCode} | Confidence: ${m.confidence} | ${confirmStatus} -->`,
       `        <reactionmeddrapt>${escapeXml(m.ptTerm)}</reactionmeddrapt>`,
       `        <reactionmeddraversionllt>${escapeXml(meddraVersion)}</reactionmeddraversionllt>`,
-      `        <!-- LLT (use PT as LLT when LLT = PT) -->`,
-      `        <reactionmeddralllt>${escapeXml(m.ptTerm)}</reactionmeddralllt>`,
+      `        <!-- LLT Code: ${m.lltCode ?? m.ptCode} | ${confirmStatus} -->`,
+      `        <!-- LLT defaults to PT when no more specific term exists per MedDRA hierarchy -->`,
+      `        <reactionmeddralllt>${escapeXml(m.lltTerm ?? m.ptTerm)}</reactionmeddralllt>`,
       `        <!-- HLT: ${m.hltCode} / ${escapeXml(m.hltTerm)} -->`,
       `        <!-- HLGT: ${m.hlgtCode} / ${escapeXml(m.hlgtTerm)} -->`,
       `        <!-- SOC: ${m.socCode} / ${escapeXml(m.socTerm)} -->`,

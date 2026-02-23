@@ -1,19 +1,19 @@
 import React from 'react';
 
-const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
-  pending:       { label: 'Pending',       bg: '#FFF3CD', color: '#856404' },
-  reviewed:      { label: 'Reviewed',      bg: '#D1ECF1', color: '#0C5460' },
-  reported:      { label: 'Reported',      bg: '#D4EDDA', color: '#155724' },
-  dismissed:     { label: 'Dismissed',     bg: '#F8F9FA', color: '#6C757D' },
-  escalated:     { label: 'Escalated',     bg: '#F8D7DA', color: '#721C24' },
-  false_positive:{ label: 'False Positive', bg: '#E2E3E5', color: '#383D41' },
+const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; border: string; dot?: string }> = {
+  pending:        { label: 'Pending',       bg: '#FFFBEB', color: '#92400E', border: '#FDE68A', dot: '#D97706' },
+  reviewed:       { label: 'Reviewed',      bg: '#ECFDF5', color: '#065F46', border: '#A7F3D0', dot: '#10B981' },
+  reported:       { label: 'Reported',      bg: '#D1FAE5', color: '#064E3B', border: '#6EE7B7', dot: '#059669' },
+  dismissed:      { label: 'Dismissed',     bg: '#F9FAFB', color: '#6B7280', border: '#E5E7EB', dot: '#9CA3AF' },
+  escalated:      { label: 'Escalated',     bg: '#FEF2F2', color: '#991B1B', border: '#FECACA', dot: '#EF4444' },
+  false_positive: { label: 'False Positive', bg: '#F3F4F6', color: '#4B5563', border: '#D1D5DB', dot: '#9CA3AF' },
 };
 
-const SEVERITY_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
-  low:      { label: 'Low',      bg: '#E2F0CB', color: '#3D6B22' },
-  medium:   { label: 'Medium',   bg: '#FFF3CD', color: '#856404' },
-  high:     { label: 'High',     bg: '#FFE0B2', color: '#BF360C' },
-  critical: { label: 'Critical', bg: '#FFCDD2', color: '#B71C1C' },
+const SEVERITY_CONFIG: Record<string, { label: string; bg: string; color: string; border: string; dot?: string; pulse?: boolean }> = {
+  low:      { label: 'Low',      bg: '#ECFDF5', color: '#065F46', border: '#A7F3D0', dot: '#10B981' },
+  medium:   { label: 'Medium',   bg: '#FFFBEB', color: '#92400E', border: '#FDE68A', dot: '#D97706' },
+  high:     { label: 'High',     bg: '#FFF7ED', color: '#9A3412', border: '#FDBA74', dot: '#EA580C' },
+  critical: { label: 'Critical', bg: '#FEF2F2', color: '#7F1D1D', border: '#FECACA', dot: '#DC2626', pulse: true },
 };
 
 interface StatusBadgeProps {
@@ -25,22 +25,43 @@ interface StatusBadgeProps {
 export default function StatusBadge({ value, type, small = false }: StatusBadgeProps) {
   const config =
     type === 'status'
-      ? STATUS_CONFIG[value] ?? { label: value, bg: '#E2E3E5', color: '#383D41' }
-      : SEVERITY_CONFIG[value] ?? { label: value, bg: '#E2E3E5', color: '#383D41' };
+      ? STATUS_CONFIG[value]   ?? { label: value, bg: '#F3F4F6', color: '#4B5563', border: '#D1D5DB', dot: '#9CA3AF' }
+      : SEVERITY_CONFIG[value] ?? { label: value, bg: '#F3F4F6', color: '#4B5563', border: '#D1D5DB', dot: '#9CA3AF' };
 
   return (
-    <span
-      style={{
-        display: 'inline-block',
-        padding: small ? '2px 6px' : '3px 10px',
-        borderRadius: 12,
-        fontSize: small ? 11 : 12,
-        fontWeight: 600,
-        backgroundColor: config.bg,
-        color: config.color,
-        whiteSpace: 'nowrap',
-      }}
-    >
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: small ? 4 : 5,
+      padding: small ? '2px 7px' : '4px 10px',
+      borderRadius: 20,
+      fontSize: small ? 11 : 12,
+      fontWeight: 600,
+      backgroundColor: config.bg,
+      color: config.color,
+      border: `1px solid ${config.border}`,
+      whiteSpace: 'nowrap',
+      lineHeight: 1.4,
+    }}>
+      {config.dot && (
+        <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+          {(config as typeof SEVERITY_CONFIG[string]).pulse && (
+            <span style={{
+              position: 'absolute', inset: 0, borderRadius: '50%',
+              background: config.dot,
+              animation: 'ping 1.5s cubic-bezier(0,0,0.2,1) infinite',
+              opacity: 0.6,
+            }} />
+          )}
+          <span style={{
+            width: small ? 5 : 6, height: small ? 5 : 6,
+            borderRadius: '50%',
+            background: config.dot,
+            display: 'inline-block',
+            position: 'relative',
+          }} />
+        </span>
+      )}
       {config.label}
     </span>
   );

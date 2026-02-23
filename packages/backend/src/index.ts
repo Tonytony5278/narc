@@ -10,6 +10,7 @@ import { startSlaWorker } from './workers/sla-worker';
 import { startMailMonitor } from './services/mailMonitor';
 
 import analyzeRouter from './routes/analyze';
+import analyzeDocumentRouter from './routes/analyzeDocument';
 import eventsRouter from './routes/events';
 import demoRouter from './routes/demo';
 import authRouter from './routes/auth';
@@ -20,6 +21,7 @@ import usersRouter from './routes/admin/users';
 import monitorRouter from './routes/admin/monitor';
 import documentsRouter from './routes/documents';
 import monographsRouter from './routes/monographs';
+import signalsRouter from './routes/signals';
 
 // ─── Validate required env vars ───────────────────────────────────────────
 
@@ -69,6 +71,11 @@ async function main() {
   // ─── Protected routes ─────────────────────────────────────────────────
 
   app.use('/api/analyze', analyzeRouter);
+  app.use('/api/analyze/document', requireAuth, analyzeDocumentRouter);
+
+  // Signal detection (supervisor/admin)
+  app.use('/api/signals', requireAuth, requireRole('supervisor', 'admin'), signalsRouter);
+
   app.use('/api/events', eventsRouter);
 
   // Documents are nested under events: /api/events/:id/documents
@@ -117,7 +124,9 @@ async function main() {
     console.log(`   Cases:       POST http://localhost:${PORT}/api/cases/:id/submit`);
     console.log(`   Monographs:  GET  http://localhost:${PORT}/api/monographs`);
     console.log(`   Admin Audit: GET  http://localhost:${PORT}/api/admin/audit`);
-    console.log(`   Demo STT:    POST http://localhost:${PORT}/api/demo/transcribe\n`);
+    console.log(`   Demo STT:    POST http://localhost:${PORT}/api/demo/transcribe`);
+    console.log(`   Doc Analyze: POST http://localhost:${PORT}/api/analyze/document`);
+    console.log(`   Signals:     GET  http://localhost:${PORT}/api/signals\n`);
   });
 
   return app;

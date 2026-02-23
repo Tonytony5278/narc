@@ -11,6 +11,7 @@ import {
   submitCase,
   fetchSubmissions,
   fetchE2BData,
+  confirmE2BTerms,
   type DocumentRecord,
   type E2BData,
   type MeddraSuggestion,
@@ -53,9 +54,10 @@ function HighlightedBody({ body, findings }: { body: string; findings: AEFinding
   // Collect all spans with their severity
   const spans: Array<{ start: number; end: number; severity: string }> = [];
   for (const f of findings) {
-    const extF = f as AEFindingRecord & { highlight_spans?: HighlightSpan[] };
-    if (extF.highlight_spans) {
-      for (const s of extF.highlight_spans) {
+    const extF = f as AEFindingRecord & { highlight_spans?: HighlightSpan[]; highlightSpans?: HighlightSpan[] };
+    const hs = extF.highlightSpans ?? extF.highlight_spans;
+    if (hs) {
+      for (const s of hs) {
         spans.push({ start: s.start, end: s.end, severity: f.severity });
       }
     }
@@ -164,6 +166,19 @@ function E2BTab({
       ...prev,
       [findingId]: { ...prev[findingId], confirmed: true },
     }));
+    // Persist confirmed term to backend (fire and forget)
+    const t = confirmedTerms[findingId];
+    if (t) {
+      confirmE2BTerms(eventId, [{
+        findingId,
+        lltCode: t.lltCode ?? t.ptCode, lltTerm: t.lltTerm ?? t.ptTerm,
+        ptCode: t.ptCode, ptTerm: t.ptTerm,
+        hltCode: t.hltCode, hltTerm: t.hltTerm,
+        hlgtCode: t.hlgtCode, hlgtTerm: t.hlgtTerm,
+        socCode: t.socCode, socTerm: t.socTerm,
+        confidence: t.confidence,
+      }]).catch(() => { /* silent – user can re-confirm on reload */ });
+    }
   };
 
   const handleConfirmAll = () => {
@@ -172,6 +187,19 @@ function E2BTab({
       for (const id of Object.keys(next)) next[id] = { ...next[id], confirmed: true };
       return next;
     });
+    // Persist all terms to backend (fire and forget)
+    const termsToConfirm = Object.entries(confirmedTerms).map(([findingId, t]) => ({
+      findingId,
+      lltCode: t.lltCode ?? t.ptCode, lltTerm: t.lltTerm ?? t.ptTerm,
+      ptCode: t.ptCode, ptTerm: t.ptTerm,
+      hltCode: t.hltCode, hltTerm: t.hltTerm,
+      hlgtCode: t.hlgtCode, hlgtTerm: t.hlgtTerm,
+      socCode: t.socCode, socTerm: t.socTerm,
+      confidence: t.confidence,
+    }));
+    if (termsToConfirm.length > 0) {
+      confirmE2BTerms(eventId, termsToConfirm).catch(() => {});
+    }
   };
 
   const handleStartEdit = (findingId: string) => {
@@ -180,10 +208,27 @@ function E2BTab({
   };
 
   const handleApplyEdit = (findingId: string) => {
+    const existing = confirmedTerms[findingId];
+    const merged   = { ...existing, ...editDraft };
     setConfirmedTerms(prev => ({
       ...prev,
-      [findingId]: { ...prev[findingId], ...editDraft, confirmed: true, aiGenerated: true },
+      [findingId]: { ...merged, confirmed: true, aiGenerated: false },
     }));
+    // Persist edited + confirmed term to backend (fire and forget)
+    confirmE2BTerms(eventId, [{
+      findingId,
+      lltCode: (merged.lltCode ?? merged.ptCode) as string,
+      lltTerm: (merged.lltTerm ?? merged.ptTerm) as string,
+      ptCode:   merged.ptCode as string,
+      ptTerm:   merged.ptTerm as string,
+      hltCode:  merged.hltCode as string,
+      hltTerm:  merged.hltTerm as string,
+      hlgtCode: merged.hlgtCode as string,
+      hlgtTerm: merged.hlgtTerm as string,
+      socCode:  merged.socCode as string,
+      socTerm:  merged.socTerm as string,
+      confidence: merged.confidence as 'high' | 'medium' | 'low',
+    }]).catch(() => {});
     setEditingId(null);
     setEditDraft({});
   };
@@ -376,10 +421,11 @@ function E2BTab({
                 {/* Hierarchy table */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', marginBottom: 12 }}>
                   {[
-                    { level: 'PT',   code: term.ptCode,   term: term.ptTerm,   label: 'Preferred Term' },
-                    { level: 'HLT',  code: term.hltCode,  term: term.hltTerm,  label: 'High Level Term' },
-                    { level: 'HLGT', code: term.hlgtCode, term: term.hlgtTerm, label: 'HLT Group Term' },
-                    { level: 'SOC',  code: term.socCode,  term: term.socTerm,  label: 'System Organ Class' },
+                    { level: 'LLT',  code: term.lltCode  ?? term.ptCode,  term: term.lltTerm  ?? term.ptTerm,  label: 'Lowest Level Term' },
+                    { level: 'PT',   code: term.ptCode,                   term: term.ptTerm,                   label: 'Preferred Term' },
+                    { level: 'HLT',  code: term.hltCode,                  term: term.hltTerm,                  label: 'High Level Term' },
+                    { level: 'HLGT', code: term.hlgtCode,                 term: term.hlgtTerm,                 label: 'HLT Group Term' },
+                    { level: 'SOC',  code: term.socCode,                  term: term.socTerm,                  label: 'System Organ Class' },
                   ].map(({ level, code, term: termName, label }) => (
                     <div key={level} style={{
                       background: '#F7FAFC', borderRadius: 6, padding: '8px 10px',
@@ -442,6 +488,8 @@ function E2BTab({
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: '8px 10px', alignItems: 'center' }}>
                   {[
+                    { key: 'lltCode',  label: 'LLT Code',  type: 'code' },
+                    { key: 'lltTerm',  label: 'LLT Term',  type: 'term' },
                     { key: 'ptCode',   label: 'PT Code',   type: 'code' },
                     { key: 'ptTerm',   label: 'PT Term',   type: 'term' },
                     { key: 'hltCode',  label: 'HLT Code',  type: 'code' },
@@ -606,10 +654,14 @@ export default function EventDetailModal({ event, onClose, onStatusChange, userR
       fetchE2BData(event.id)
         .then((data) => {
           setE2bData(data);
-          // Initialise confirmed-terms map from AI suggestions (not yet confirmed)
+          // Initialise confirmed-terms map from backend data.
+          // If a term was previously confirmed (persisted in e2b_meddra_terms), honour that flag.
           const initial: Record<string, ConfirmedTerm> = {};
           for (const f of data.findings) {
-            initial[f.findingId] = { ...f.meddra, confirmed: false };
+            initial[f.findingId] = {
+              ...f.meddra,
+              confirmed: f.meddra.confirmed ?? false,
+            };
           }
           setConfirmedTerms(initial);
         })

@@ -3,14 +3,87 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="NARC Pharmacovigilance — Adverse Event Detection and Regulatory Reporting" />
     <title>NARC — Adverse Event Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
+      :root {
+        --brand:       #9B2335;
+        --brand-dark:  #7B1B29;
+        --brand-light: #FFF5F5;
+        --navy:        #1a1a2e;
+        --navy-mid:    #2d2d4a;
+        --text-primary:   #1a1a2e;
+        --text-secondary: #4A5568;
+        --text-muted:     #718096;
+        --border:      #E2E8F0;
+        --border-light:#EDF2F7;
+        --bg-page:     #F0F2F5;
+        --bg-card:     #ffffff;
+        --bg-subtle:   #F7FAFC;
+        --success:     #276749;
+        --success-bg:  #D4EDDA;
+        --warning:     #744210;
+        --warning-bg:  #FFFAF0;
+        --danger:      #C53030;
+        --danger-bg:   #FFF5F5;
+        --shadow-sm:   0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+        --shadow-md:   0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.05);
+        --shadow-lg:   0 10px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06);
+        --radius-sm:   6px;
+        --radius-md:   10px;
+        --radius-lg:   14px;
+        --transition:  150ms cubic-bezier(0.4,0,0.2,1);
+      }
       *, *::before, *::after { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
       body {
         margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: #f5f7fa;
-        color: #1a1a2e;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: var(--bg-page);
+        color: var(--text-primary);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #CBD5E0; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #A0AEC0; }
+      /* Focus ring */
+      :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+      /* Input base */
+      input, select, textarea, button {
+        font-family: inherit;
+        font-size: inherit;
+      }
+      /* Animations */
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(16px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+      @keyframes slideIn {
+        from { transform: translateX(120%); opacity: 0; }
+        to   { transform: translateX(0);    opacity: 1; }
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50%       { opacity: 0.45; }
+      }
+      @keyframes ping {
+        0%    { transform: scale(1);   opacity: 1; }
+        75%,100% { transform: scale(2); opacity: 0; }
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
       }
     </style>
   </head>

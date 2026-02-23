@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { buildCasePacket } from '../services/casePacket';
-import { generateE2BData } from '../services/e2b';
+import { generateE2BData, saveConfirmedTerm } from '../services/e2b';
+import type { MeddraSuggestion } from '../services/e2b';
 import { insertSubmission, getSubmissionsByEvent } from '../db/queries/submissions';
 import { updateEventStatus } from '../db/queries/events';
 import { auditLog } from '../services/audit';
@@ -130,6 +131,51 @@ router.get('/:eventId/e2b', async (req: Request, res: Response, next: NextFuncti
     });
 
     res.json(e2bData);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/cases/:eventId/e2b/confirm
+ * Save a QP-confirmed MedDRA term for one or more findings.
+ * Body: { terms: [{ findingId, lltCode, lltTerm, ptCode, ptTerm, hltCode, hltTerm, hlgtCode, hlgtTerm, socCode, socTerm, confidence }] }
+ */
+router.post('/:eventId/e2b/confirm', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { eventId } = req.params;
+    const actor = req.actor!;
+
+    const { terms } = req.body as {
+      terms: Array<{
+        findingId: string;
+      } & Omit<MeddraSuggestion, 'aiGenerated' | 'warning' | 'confirmed'>>;
+    };
+
+    if (!Array.isArray(terms) || terms.length === 0) {
+      res.status(400).json({ error: 'terms array required' });
+      return;
+    }
+
+    for (const term of terms) {
+      if (!term.findingId) {
+        res.status(400).json({ error: 'Each term must have findingId' });
+        return;
+      }
+      await saveConfirmedTerm(eventId, term.findingId, term, actor.sub);
+    }
+
+    await auditLog({
+      actor: { id: actor.sub, role: actor.role },
+      action: AuditActions.E2B_PREPARE,
+      entityType: 'event',
+      entityId: eventId,
+      before: null,
+      after: { action: 'terms_confirmed', count: terms.length, confirmedBy: actor.email },
+      req,
+    });
+
+    res.json({ confirmed: terms.length, eventId });
   } catch (err) {
     next(err);
   }

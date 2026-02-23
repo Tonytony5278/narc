@@ -3,7 +3,12 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { AnalyzeRequest, AnalyzeResponse, AnalyzeResponseSchema } from '@narc/shared';
 import type { ActivePolicy } from './policy';
 
-const client = new Anthropic();
+// Lazy-initialised so dotenv has time to populate process.env before first call
+let _client: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _client;
+}
 
 export const MODEL_VERSION = 'claude-opus-4-6';
 
@@ -144,7 +149,7 @@ export async function analyzeEmail(
     ...rawSchema,
   };
 
-  const message = await client.messages.create({
+  const message = await getClient().messages.create({
     model: MODEL_VERSION,
     max_tokens: 4096,
     system: SYSTEM_PROMPT,

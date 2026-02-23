@@ -138,3 +138,76 @@ export async function fetchMonographs(): Promise<MonographSummary[]> {
   const data = (await res.json()) as { monographs: MonographSummary[] };
   return data.monographs ?? [];
 }
+
+// ─── Document attachment AE analysis ─────────────────────────────────────────
+
+export interface AttachmentFinding {
+  id: string;
+  eventId: string;
+  excerpt: string;
+  category: string;
+  severity: string;
+  explanation: string;
+  urgency: string;
+  confidence: number;
+  status: string;
+}
+
+export interface DocumentAnalysisResult {
+  eventId: string;
+  filename: string;
+  extractionMethod: string;
+  extractedChars: number;
+  ocrConfidence: number | null;
+  hasAEs: boolean;
+  findings: AttachmentFinding[];
+  summary: string;
+  analysisNotes: string | null;
+  monograph: { brandName: string; genericName: string } | null;
+}
+
+/**
+ * Analyze a file attachment for adverse events.
+ * Sends base64-encoded file content to the backend which:
+ *   1. Extracts text (PDF, DOCX, RTF, TXT) or uses Claude Vision OCR (images/faxes/handwriting)
+ *   2. Runs full AE detection with policy + monograph context
+ *   3. Creates a NARC event and returns findings immediately
+ */
+export async function analyzeDocumentAttachment(params: {
+  filename: string;
+  contentBytes: string;  // base64
+  contentType: string;
+  subject?: string;
+  sender?: string;
+  receivedAt?: string;
+  emailId?: string;
+}): Promise<DocumentAnalysisResult> {
+  // Decode base64 → Blob → FormData
+  const binary = atob(params.contentBytes);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: params.contentType });
+
+  const form = new FormData();
+  form.append('document', blob, params.filename);
+  if (params.subject)    form.append('subject', params.subject);
+  if (params.sender)     form.append('sender', params.sender);
+  if (params.receivedAt) form.append('receivedAt', params.receivedAt);
+  if (params.emailId)    form.append('emailId', `attachment-${params.emailId}-${params.filename}`);
+
+  const token = getToken();
+  const res = await fetch(`${BACKEND_URL}/api/analyze/document`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(
+      (body as { error?: string }).error ?? `Document analysis failed: ${res.status} ${res.statusText}`
+    );
+  }
+
+  return res.json() as Promise<DocumentAnalysisResult>;
+}

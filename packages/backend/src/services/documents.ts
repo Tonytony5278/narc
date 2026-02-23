@@ -2,7 +2,11 @@ import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
 import Anthropic from '@anthropic-ai/sdk';
 
-const claudeClient = new Anthropic();
+let _claudeClient: Anthropic | null = null;
+function claudeClient(): Anthropic {
+  if (!_claudeClient) _claudeClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _claudeClient;
+}
 
 export interface BoundingBox {
   page: number;
@@ -148,7 +152,7 @@ async function extractWithClaudeVision(
     ? (mimeType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp')
     : 'image/png';
 
-  const response = await claudeClient.messages.create({
+  const response = await claudeClient().messages.create({
     model: 'claude-opus-4-6',
     max_tokens: 4096,
     messages: [

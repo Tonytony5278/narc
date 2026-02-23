@@ -156,6 +156,61 @@ export async function fetchInboxMessages(count = 30): Promise<InboxMessage[]> {
   }));
 }
 
+// ─── Attachment listing ────────────────────────────────────────────────────────
+
+export interface AttachmentMeta {
+  id: string;
+  name: string;
+  contentType: string;
+  size: number;
+  isInline: boolean;
+}
+
+const PROCESSABLE_CONTENT_TYPES = new Set([
+  'application/pdf',
+  'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp',
+  'image/tiff', 'image/x-tiff',  // faxes often arrive as TIFF
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/rtf', 'text/rtf', 'text/plain',
+]);
+
+const PROCESSABLE_EXTENSIONS = ['.pdf','.png','.jpg','.jpeg','.gif','.webp','.tiff','.tif','.docx','.rtf','.txt'];
+
+export function isProcessableAttachment(name: string, contentType: string): boolean {
+  if (PROCESSABLE_CONTENT_TYPES.has(contentType)) return true;
+  const lower = name.toLowerCase();
+  return PROCESSABLE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+/**
+ * Fetch full attachment metadata for a given message ID.
+ * Returns id, name, contentType, size, isInline.
+ */
+export async function listAttachmentsWithDetails(messageId: string): Promise<AttachmentMeta[]> {
+  try {
+    const token = await getRestToken();
+    const baseUrl = Office.context.mailbox.restUrl;
+    const url = `${baseUrl}/v2.0/me/messages/${messageId}/attachments?$select=Id,Name,ContentType,Size,IsInline`;
+
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) return [];
+
+    const data = await response.json() as {
+      value: Array<{ Id: string; Name: string; ContentType: string; Size: number; IsInline: boolean }>;
+    };
+
+    return (data.value ?? []).map((a) => ({
+      id:          a.Id,
+      name:        a.Name,
+      contentType: a.ContentType,
+      size:        a.Size,
+      isInline:    a.IsInline,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Fetch the list of attachment names for a given message ID.
  * Used to populate the AttachmentBadge tooltip on inbox rows.

@@ -210,16 +210,21 @@ export async function fetchSubmissions(eventId: string): Promise<unknown[]> {
 // ─── E2B(R3) regulatory export ────────────────────────────────────────────────
 
 export interface MeddraSuggestion {
-  ptCode: string;
+  lltCode: string;   // Lowest Level Term (most specific)
+  lltTerm: string;
+  ptCode: string;    // Preferred Term
   ptTerm: string;
-  hltCode: string;
+  hltCode: string;   // High Level Term
   hltTerm: string;
-  hlgtCode: string;
+  hlgtCode: string;  // High Level Group Term
   hlgtTerm: string;
-  socCode: string;
+  socCode: string;   // System Organ Class
   socTerm: string;
   confidence: 'high' | 'medium' | 'low';
-  aiGenerated: true;
+  aiGenerated: boolean;  // true = AI-suggested, false = manually edited by human
+  confirmed: boolean;       // QP has confirmed this term
+  confirmedBy?: string;
+  confirmedAt?: string;
   warning: string;
 }
 
@@ -246,6 +251,8 @@ export interface E2BData {
   meddraVersion: string;
   findings: E2BFinding[];
   disclaimer: string;
+  confirmedCount: number;
+  totalCount: number;
 }
 
 export async function fetchE2BData(eventId: string): Promise<E2BData> {
@@ -255,6 +262,88 @@ export async function fetchE2BData(eventId: string): Promise<E2BData> {
     throw new Error((data as { error?: string }).error ?? `Failed to prepare E2B report: ${res.statusText}`);
   }
   return res.json() as Promise<E2BData>;
+}
+
+export async function confirmE2BTerms(
+  eventId: string,
+  terms: Array<{ findingId: string } & Omit<MeddraSuggestion, 'aiGenerated' | 'warning' | 'confirmed'>>
+): Promise<void> {
+  const res = await apiFetch(`/cases/${eventId}/e2b/confirm`, {
+    method: 'POST',
+    body: JSON.stringify({ terms }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error ?? `Failed to confirm terms: ${res.statusText}`);
+  }
+}
+
+// ─── Signal Detection ─────────────────────────────────────────────────────────
+
+export interface SignalSummary {
+  totalEvents: number;
+  totalFindings: number;
+  totalAEEvents: number;
+  criticalCount: number;
+  highCount: number;
+  mediumCount: number;
+  lowCount: number;
+  slaBreachedCount: number;
+  periodDays: number;
+  generatedAt: string;
+}
+
+export interface DrugSignal {
+  drugName: string;
+  eventCount: number;
+  findingCount: number;
+  severityDistribution: Record<string, number>;
+  categories: string[];
+  offLabelFlags: number;
+  lastReportedAt: string;
+  trend: 'rising' | 'stable' | 'falling';
+  riskScore: number;
+}
+
+export interface CategorySignal {
+  category: string;
+  findingCount: number;
+  eventCount: number;
+  severityDistribution: Record<string, number>;
+  averageConfidence: number;
+  lastSeenAt: string;
+}
+
+export interface TimelinePoint {
+  date: string;
+  eventCount: number;
+  aeCount: number;
+  criticalCount: number;
+  highCount: number;
+}
+
+export async function fetchSignalSummary(days = 90): Promise<SignalSummary> {
+  const res = await apiFetch(`/signals?days=${days}`);
+  if (!res.ok) throw new Error(`Failed to fetch signal summary: ${res.statusText}`);
+  return res.json() as Promise<SignalSummary>;
+}
+
+export async function fetchDrugSignals(days = 90): Promise<{ signals: DrugSignal[]; periodDays: number }> {
+  const res = await apiFetch(`/signals/drugs?days=${days}`);
+  if (!res.ok) throw new Error(`Failed to fetch drug signals: ${res.statusText}`);
+  return res.json() as Promise<{ signals: DrugSignal[]; periodDays: number }>;
+}
+
+export async function fetchCategorySignals(days = 90): Promise<{ categories: CategorySignal[]; periodDays: number }> {
+  const res = await apiFetch(`/signals/categories?days=${days}`);
+  if (!res.ok) throw new Error(`Failed to fetch category signals: ${res.statusText}`);
+  return res.json() as Promise<{ categories: CategorySignal[]; periodDays: number }>;
+}
+
+export async function fetchSignalTimeline(days = 30): Promise<{ timeline: TimelinePoint[]; periodDays: number }> {
+  const res = await apiFetch(`/signals/timeline?days=${days}`);
+  if (!res.ok) throw new Error(`Failed to fetch signal timeline: ${res.statusText}`);
+  return res.json() as Promise<{ timeline: TimelinePoint[]; periodDays: number }>;
 }
 
 // ─── Audit log ────────────────────────────────────────────────────────────────

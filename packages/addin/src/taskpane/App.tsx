@@ -8,6 +8,7 @@ import EmptyState from './components/EmptyState';
 import LoginScreen from './components/LoginScreen';
 import AttachmentBadge from './components/AttachmentBadge';
 import MonographCard from './components/MonographCard';
+import AttachmentScanPanel from './components/AttachmentScanPanel';
 import {
   getEmailContext,
   fetchInboxMessages,
@@ -45,7 +46,7 @@ type InboxState =
   | { phase: 'done'; items: InboxItem[] }
   | { phase: 'error'; message: string };
 
-type Tab = 'current' | 'inbox';
+type Tab = 'current' | 'inbox' | 'attachments';
 
 // Extended API response — backend returns `monograph` in analyze response
 interface AnalyzeApiResponseExtended {
@@ -191,6 +192,11 @@ export default function App() {
   const [drugName] = useState<string | undefined>(undefined);
   const scanAbortRef = useRef(false);
 
+  // ── Current email context (for attachment panel) ────────────────────
+  const [currentEmailCtx, setCurrentEmailCtx] = useState<{
+    itemId: string; subject: string; sender: string; receivedAt: string; hasAttachments: boolean;
+  } | null>(null);
+
   // ── Auth state ─────────────────────────────────────────────────────────
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => !!getToken());
   const [checkingDevMode, setCheckingDevMode] = useState<boolean>(() => !getToken());
@@ -260,6 +266,18 @@ export default function App() {
         setEmailState({ phase: 'no-email' });
         return;
       }
+
+      // Capture email context for the attachment panel
+      const item = Office.context.mailbox.item as Office.MessageRead | null;
+      const hasAttachments = (item?.attachments?.length ?? 0) > 0;
+      setCurrentEmailCtx({
+        itemId:         emailCtx.itemId,
+        subject:        emailCtx.subject,
+        sender:         emailCtx.sender,
+        receivedAt:     emailCtx.receivedAt,
+        hasAttachments,
+      });
+
       const result = (await analyzeEmail({
         emailBody: emailCtx.body,
         subject: emailCtx.subject,
@@ -531,6 +549,27 @@ export default function App() {
             </span>
           )}
         </button>
+        <button
+          onClick={() => setTab('attachments')}
+          style={{
+            flex: 1,
+            padding: '7px 4px',
+            fontSize: 11,
+            fontWeight: tab === 'attachments' ? 700 : 400,
+            color: tab === 'attachments' ? '#1a1a2e' : '#718096',
+            background: 'none',
+            border: 'none',
+            borderBottom: tab === 'attachments' ? '2px solid #9B2335' : '2px solid transparent',
+            cursor: 'pointer',
+            marginBottom: -2,
+            position: 'relative',
+          }}
+        >
+          📎 Docs
+          {currentEmailCtx?.hasAttachments && (
+            <span style={{ marginLeft: 3, width: 6, height: 6, background: '#C45000', borderRadius: '50%', display: 'inline-block', verticalAlign: 'middle' }} />
+          )}
+        </button>
       </div>
 
       {/* Content */}
@@ -561,6 +600,35 @@ export default function App() {
                 <AEList findings={emailState.findings} eventId={emailState.eventId} />
                 <div style={{ height: 16 }} />
               </>
+            )}
+          </>
+        )}
+
+        {/* ── Attachments Tab ── */}
+        {tab === 'attachments' && (
+          <>
+            {!currentEmailCtx ? (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#A0AEC0', fontSize: 11 }}>
+                Open an email to scan its attachments.
+              </div>
+            ) : !currentEmailCtx.hasAttachments ? (
+              <div style={{ padding: '20px', textAlign: 'center' }}>
+                <div style={{ fontSize: 28, marginBottom: 6 }}>📭</div>
+                <div style={{ fontSize: 12, color: '#718096' }}>
+                  This email has no attachments.
+                </div>
+                <div style={{ fontSize: 10.5, color: '#A0AEC0', marginTop: 4 }}>
+                  Open an email with PDF, image, or document attachments to scan them for adverse events.
+                </div>
+              </div>
+            ) : (
+              <AttachmentScanPanel
+                key={currentEmailCtx.itemId}
+                messageId={currentEmailCtx.itemId}
+                subject={currentEmailCtx.subject}
+                sender={currentEmailCtx.sender}
+                receivedAt={currentEmailCtx.receivedAt}
+              />
             )}
           </>
         )}
