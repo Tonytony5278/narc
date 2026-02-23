@@ -207,6 +207,56 @@ export async function fetchSubmissions(eventId: string): Promise<unknown[]> {
   return data.submissions;
 }
 
+// ─── E2B(R3) regulatory export ────────────────────────────────────────────────
+
+export interface MeddraSuggestion {
+  ptCode: string;
+  ptTerm: string;
+  hltCode: string;
+  hltTerm: string;
+  hlgtCode: string;
+  hlgtTerm: string;
+  socCode: string;
+  socTerm: string;
+  confidence: 'high' | 'medium' | 'low';
+  aiGenerated: true;
+  warning: string;
+}
+
+export interface E2BFinding {
+  findingId: string;
+  excerpt: string;
+  category: string;
+  severity: string;
+  urgency: string;
+  explanation: string;
+  meddra: MeddraSuggestion;
+}
+
+export interface E2BData {
+  eventId: string;
+  event: {
+    subject: string;
+    sender: string;
+    receivedAt: string;
+    bodyExcerpt: string;
+    maxSeverity: string;
+  };
+  generatedAt: string;
+  meddraVersion: string;
+  findings: E2BFinding[];
+  disclaimer: string;
+}
+
+export async function fetchE2BData(eventId: string): Promise<E2BData> {
+  const res = await apiFetch(`/cases/${eventId}/e2b`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error ?? `Failed to prepare E2B report: ${res.statusText}`);
+  }
+  return res.json() as Promise<E2BData>;
+}
+
 // ─── Audit log ────────────────────────────────────────────────────────────────
 
 export interface AuditEntry {

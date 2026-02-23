@@ -38,6 +38,9 @@ export const AuditActions = {
   // Drug monographs
   MONOGRAPH_UPDATED: 'monograph.updated',
   MONOGRAPH_CREATED: 'monograph.created',
+
+  // E2B(R3) regulatory export
+  E2B_PREPARE: 'e2b.prepare',
 } as const;
 
 export type AuditAction = (typeof AuditActions)[keyof typeof AuditActions];

@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { buildCasePacket } from '../services/casePacket';
+import { generateE2BData } from '../services/e2b';
 import { insertSubmission, getSubmissionsByEvent } from '../db/queries/submissions';
 import { updateEventStatus } from '../db/queries/events';
 import { auditLog } from '../services/audit';
@@ -96,6 +97,39 @@ router.get('/:eventId/submissions', async (req: Request, res: Response, next: Ne
     const { eventId } = req.params;
     const submissions = await getSubmissionsByEvent(eventId);
     res.json({ submissions, total: submissions.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/cases/:eventId/e2b
+ * Generate E2B(R3) report data with AI-suggested MedDRA terms.
+ * Claude suggests MedDRA PT/HLT/HLGT/SOC for each finding.
+ * ⚠️  All AI-suggested codes must be confirmed by a qualified person before regulatory submission.
+ */
+router.get('/:eventId/e2b', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { eventId } = req.params;
+    const actor = req.actor!;
+
+    const e2bData = await generateE2BData(eventId);
+
+    await auditLog({
+      actor: { id: actor.sub, role: actor.role },
+      action: AuditActions.E2B_PREPARE,
+      entityType: 'event',
+      entityId: eventId,
+      before: null,
+      after: {
+        findingCount: e2bData.findings.length,
+        meddraVersion: e2bData.meddraVersion,
+        generatedAt: e2bData.generatedAt,
+      },
+      req,
+    });
+
+    res.json(e2bData);
   } catch (err) {
     next(err);
   }
