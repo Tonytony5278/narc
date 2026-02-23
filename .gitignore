@@ -1,0 +1,26 @@
+node_modules/
+dist/
+build/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.local
+.DS_Store
+Thumbs.db
+*.log
+.vite/
+coverage/
+.nyc_output/
+.claude/
+uploads/
+*.pem
+*.key
+*.crt
+
+# PostgreSQL local data directory (dev only, never commit)
+.pg-data/
+packages/backend/.pg-data/
+
+# Lock files (optional — remove if you want to pin deps)
+# package-lock.json

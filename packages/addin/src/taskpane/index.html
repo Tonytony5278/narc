@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NARC — AE Detector</title>
+    <!-- Office.js MUST be loaded before the app script -->
+    <script
+      type="text/javascript"
+      src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"
+    ></script>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 13px;
+        color: #1a1a2e;
+        background: #f8f9fa;
+        overflow-x: hidden;
+      }
+      /* Prevent flash of unstyled content */
+      #root { min-height: 100vh; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- taskpane.bundle.js injected by HtmlWebpackPlugin -->
+  </body>
+</html>

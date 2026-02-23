@@ -1,0 +1,20 @@
+{
+  "name": "narc",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w packages/backend\" \"npm run dev -w packages/dashboard\"",
+    "dev:backend": "npm run dev -w packages/backend",
+    "dev:dashboard": "npm run dev -w packages/dashboard",
+    "dev:addin": "npm run dev -w packages/addin",
+    "build": "npm run build -w packages/shared && npm run build -w packages/backend && npm run build -w packages/dashboard && npm run build -w packages/addin",
+    "build:shared": "npm run build -w packages/shared",
+    "typecheck": "npm run typecheck -w packages/shared && npm run typecheck -w packages/backend && npm run typecheck -w packages/dashboard"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.4.5"
+  }
+}
