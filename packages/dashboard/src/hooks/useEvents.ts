@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { EventRecord } from '@narc/shared';
 import { fetchEvents, updateEventStatus, EventsFilter } from '../api/client';
 
@@ -9,6 +9,8 @@ interface UseEventsResult {
   error: string | null;
   refresh: () => void;
   updateStatus: (id: string, status: string, notes?: string) => Promise<void>;
+  newEvents: EventRecord[];
+  clearNewEvents: () => void;
 }
 
 export function useEvents(filter: EventsFilter = {}): UseEventsResult {
@@ -16,6 +18,9 @@ export function useEvents(filter: EventsFilter = {}): UseEventsResult {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [newEvents, setNewEvents] = useState<EventRecord[]>([]);
+  const seenIdsRef = useRef<Set<string>>(new Set());
+  const isFirstLoadRef = useRef(true);
 
   const filterKey = JSON.stringify(filter);
 
@@ -24,6 +29,19 @@ export function useEvents(filter: EventsFilter = {}): UseEventsResult {
       setLoading(true);
       setError(null);
       const data = await fetchEvents(filter);
+
+      // Detect genuinely new events (not on first load)
+      if (!isFirstLoadRef.current) {
+        const incoming = data.events.filter((e) => !seenIdsRef.current.has(e.id));
+        if (incoming.length > 0) {
+          setNewEvents((prev) => [...incoming, ...prev]);
+        }
+      } else {
+        isFirstLoadRef.current = false;
+      }
+
+      // Track all seen IDs
+      data.events.forEach((e) => seenIdsRef.current.add(e.id));
       setEvents(data.events);
       setTotal(data.total);
     } catch (err) {
@@ -34,10 +52,10 @@ export function useEvents(filter: EventsFilter = {}): UseEventsResult {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterKey]);
 
-  // Initial load + polling every 30 seconds
+  // Initial load + polling every 10 seconds
   useEffect(() => {
     load();
-    const interval = setInterval(load, 30_000);
+    const interval = setInterval(load, 10_000);
     return () => clearInterval(interval);
   }, [load]);
 
@@ -52,5 +70,7 @@ export function useEvents(filter: EventsFilter = {}): UseEventsResult {
     []
   );
 
-  return { events, total, loading, error, refresh: load, updateStatus };
+  const clearNewEvents = useCallback(() => setNewEvents([]), []);
+
+  return { events, total, loading, error, refresh: load, updateStatus, newEvents, clearNewEvents };
 }

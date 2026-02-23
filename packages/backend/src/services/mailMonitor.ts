@@ -244,14 +244,27 @@ async function processRawEmail(rawBuffer: Buffer, uid: number): Promise<void> {
 async function processUnseenMessages(client: ImapFlow): Promise<void> {
   const uids: number[] = [];
 
-  // Collect UIDs of all unseen messages first
+  // Search for both unseen messages AND any seen messages received in the last 24h
+  // that haven't been processed yet (handles the case where Outlook marks them read first).
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  const unseenUids: number[] = [];
+  const recentUids: number[] = [];
+
   for await (const msg of client.fetch({ seen: false }, { uid: true })) {
-    uids.push(msg.uid);
+    unseenUids.push(msg.uid);
   }
+  for await (const msg of client.fetch({ since }, { uid: true, envelope: true })) {
+    // Only include recently-seen messages not already in unseen list
+    if (!unseenUids.includes(msg.uid)) recentUids.push(msg.uid);
+  }
+
+  // Merge, deduplicate, filter out already-processed message IDs
+  uids.push(...unseenUids, ...recentUids);
 
   if (uids.length === 0) return;
 
-  console.log(`[monitor] Found ${uids.length} unseen message(s) — processing…`);
+  console.log(`[monitor] Found ${unseenUids.length} unseen + ${recentUids.length} recent-seen message(s) — processing…`);
 
   for (const uid of uids) {
     try {
@@ -339,7 +352,8 @@ async function reconnectLoop(): Promise<void> {
       _state.errorCount++;
       _state.reconnectCount++;
       _state.lastError = err instanceof Error ? err.message : String(err);
-      console.error(`[monitor] Session error — reconnecting in ${delay / 1000}s:`, _state.lastError);
+      const fullErr = err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.error(`[monitor] Session error — reconnecting in ${delay / 1000}s:`, fullErr);
       await new Promise((r) => setTimeout(r, delay));
       delay = Math.min(delay * 2, MAX_DELAY);
     }

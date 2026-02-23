@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import FilterBar from './components/FilterBar';
 import EventsTable from './components/EventsTable';
 import { useEvents } from './hooks/useEvents';
@@ -18,20 +18,42 @@ export default function App() {
   const { user, isAuthenticated, isAdmin, login, logout } = useAuth();
   const [tab, setTab] = useState<ActiveTab>('events');
   const [filter, setFilter] = useState<EventsFilter>({});
-  const { events, total, loading, error, refresh, updateStatus } = useEvents(filter);
+  const { events, total, loading, error, refresh, updateStatus, newEvents, clearNewEvents } = useEvents(filter);
 
   // Dev mode: if NARC_AUTH is not set, backend bypasses auth (mock admin UUID)
-  // We still show the login page unless they have a token or we detect dev bypass.
-  // A simple heuristic: try to load events — if 401 → show login; if ok → allow.
   const [devBypass, setDevBypass] = useState<boolean>(false);
   const [clearing, setClearing] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Check dev bypass on first load
   React.useEffect(() => {
     fetch('/api/events?limit=1')
       .then((r) => { if (r.ok) setDevBypass(true); })
       .catch(() => {});
+    // Request browser notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
   }, []);
+
+  // Show toast + browser notification when new AE events arrive
+  useEffect(() => {
+    if (newEvents.length === 0) return;
+    setToastVisible(true);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToastVisible(false), 8000);
+
+    // Browser notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const critical = newEvents.filter((e) => e.maxSeverity === 'critical' || e.maxSeverity === 'high');
+      const title = critical.length > 0
+        ? `🚨 NARC: ${critical.length} critical/high AE detected`
+        : `⚠️ NARC: ${newEvents.length} new AE event${newEvents.length > 1 ? 's' : ''} detected`;
+      const body = newEvents[0].subject ?? 'New adverse event requires review';
+      new Notification(title, { body, icon: '/favicon.ico' });
+    }
+  }, [newEvents]);
 
   // Show login page if not authenticated and not in dev bypass mode
   if (!isAuthenticated && !devBypass) {
@@ -40,10 +62,11 @@ export default function App() {
 
   const navBtn = (id: ActiveTab, label: string, adminOnly = false) => {
     if (adminOnly && !isAdmin && !devBypass) return null;
+    const showBadge = id === 'events' && newEvents.length > 0;
     return (
       <button
         key={id}
-        onClick={() => setTab(id)}
+        onClick={() => { setTab(id); if (id === 'events') clearNewEvents(); }}
         style={{
           padding: '0 16px',
           height: '100%',
@@ -55,9 +78,22 @@ export default function App() {
           fontSize: 13,
           cursor: 'pointer',
           transition: 'color 0.15s',
+          position: 'relative',
         }}
       >
         {label}
+        {showBadge && (
+          <span style={{
+            position: 'absolute', top: 8, right: 4,
+            background: '#E53E3E', color: '#fff',
+            borderRadius: '50%', width: 16, height: 16,
+            fontSize: 10, fontWeight: 700,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            lineHeight: 1,
+          }}>
+            {newEvents.length > 9 ? '9+' : newEvents.length}
+          </span>
+        )}
       </button>
     );
   };
@@ -170,6 +206,47 @@ export default function App() {
         {tab === 'monitor' && <MonitorPage />}
 
       </main>
+
+      {/* ── New AE Toast Notification ── */}
+      {toastVisible && newEvents.length > 0 && (
+        <div
+          onClick={() => { setTab('events'); clearNewEvents(); setToastVisible(false); }}
+          style={{
+            position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+            background: newEvents.some(e => e.maxSeverity === 'critical' || e.maxSeverity === 'high') ? '#9B2335' : '#744210',
+            color: '#fff', borderRadius: 12, padding: '14px 20px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+            cursor: 'pointer', maxWidth: 340,
+            animation: 'slideIn 0.3s ease',
+            display: 'flex', alignItems: 'flex-start', gap: 12,
+          }}
+        >
+          <span style={{ fontSize: 22, flexShrink: 0 }}>
+            {newEvents.some(e => e.maxSeverity === 'critical' || e.maxSeverity === 'high') ? '🚨' : '⚠️'}
+          </span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>
+              {newEvents.length} new AE event{newEvents.length > 1 ? 's' : ''} detected
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>
+              {newEvents[0].subject ?? 'Adverse event requires review'}
+              {newEvents.length > 1 ? ` (+${newEvents.length - 1} more)` : ''}
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.7 }}>Click to review →</div>
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); setToastVisible(false); }}
+            style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 4, padding: '2px 6px', cursor: 'pointer', fontSize: 13, flexShrink: 0 }}
+          >✕</button>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes slideIn {
+          from { transform: translateX(120%); opacity: 0; }
+          to   { transform: translateX(0);    opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
