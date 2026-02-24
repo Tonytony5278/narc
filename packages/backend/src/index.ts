@@ -22,6 +22,8 @@ import monitorRouter from './routes/admin/monitor';
 import documentsRouter from './routes/documents';
 import monographsRouter from './routes/monographs';
 import signalsRouter from './routes/signals';
+import callsRouter from './routes/calls';
+import callWebhooksRouter from './routes/callWebhooks';
 
 // ─── Validate required env vars ───────────────────────────────────────────
 
@@ -87,6 +89,12 @@ async function main() {
   // Monographs: public read, admin write (middleware inside router)
   app.use('/api/monographs', monographsRouter);
 
+  // Calls: universal call ingestion and review
+  app.use('/api/calls', callsRouter);
+
+  // Platform webhooks: Amazon Connect, Genesys, RingCentral, generic
+  app.use('/api/webhooks', callWebhooksRouter);
+
   // Admin routes
   app.use('/api/admin/policy', requireAuth, requireRole('admin'), policyRouter);
   app.use('/api/admin/audit', requireAuth, requireRole('admin'), auditRouter);
@@ -126,7 +134,10 @@ async function main() {
     console.log(`   Admin Audit: GET  http://localhost:${PORT}/api/admin/audit`);
     console.log(`   Demo STT:    POST http://localhost:${PORT}/api/demo/transcribe`);
     console.log(`   Doc Analyze: POST http://localhost:${PORT}/api/analyze/document`);
-    console.log(`   Signals:     GET  http://localhost:${PORT}/api/signals\n`);
+    console.log(`   Signals:     GET  http://localhost:${PORT}/api/signals`);
+    console.log(`   Calls:       POST http://localhost:${PORT}/api/calls/ingest`);
+    console.log(`   Calls List:  GET  http://localhost:${PORT}/api/calls`);
+    console.log(`   Webhooks:    POST http://localhost:${PORT}/api/webhooks/generic\n`);
   });
 
   return app;

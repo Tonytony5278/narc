@@ -11,13 +11,15 @@ import UsersPage from './pages/UsersPage';
 import MonitorPage from './pages/MonitorPage';
 import SignalsPage from './pages/SignalsPage';
 import RegulatoryPage from './pages/RegulatoryPage';
+import CallsPage from './pages/CallsPage';
 import type { EventsFilter } from './api/client';
 import { clearAllEvents } from './api/client';
 
-type ActiveTab = 'events' | 'audit' | 'policy' | 'monographs' | 'users' | 'monitor' | 'signals' | 'regulatory';
+type ActiveTab = 'events' | 'calls' | 'signals' | 'regulatory' | 'audit' | 'policy' | 'monographs' | 'users' | 'monitor';
 
 const NAV_ITEMS: { id: ActiveTab; label: string; adminOnly?: boolean }[] = [
   { id: 'events',      label: 'Events' },
+  { id: 'calls',       label: 'Calls',       adminOnly: true },
   { id: 'signals',     label: 'Signals',     adminOnly: true },
   { id: 'regulatory',  label: 'Regulatory',  adminOnly: true },
   { id: 'monitor',     label: 'Monitor',     adminOnly: true },
@@ -347,6 +349,7 @@ export default function App() {
           </>
         )}
 
+        {tab === 'calls'       && <CallsPage />}
         {tab === 'audit'       && <AuditLogPage />}
         {tab === 'policy'      && <PolicyPage />}
         {tab === 'monographs'  && <MonographPage />}
