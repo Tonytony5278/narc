@@ -16,10 +16,10 @@ import {
 
 const router = Router();
 
-// Multer: accept audio files in memory (max 50MB — Whisper limit is 25MB but allow headroom)
+// Multer: accept audio files in memory (max 25MB — Whisper API hard limit)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: 25 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = [
       'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/x-m4a', 'audio/m4a',
@@ -132,17 +132,21 @@ router.post(
       } else {
         // JSON body with audioUrl
         const body = req.body as Record<string, unknown>;
+        // Helper: extract string field, accepting both camelCase and snake_case keys
+        const str = (a: unknown, b: unknown): string | undefined =>
+          (typeof a === 'string' ? a : undefined) ?? (typeof b === 'string' ? b : undefined);
+
         platform        = String(body.platform ?? 'webhook');
         audioUrl        = String(body.audioUrl ?? body.audio_url ?? '');
-        externalCallId  = body.externalCallId as string | undefined ?? body.external_call_id as string | undefined;
-        agentEmail      = body.agentEmail as string | undefined ?? body.agent_email as string | undefined;
-        patientRef      = body.patientRef as string | undefined ?? body.patient_ref as string | undefined;
-        drugName        = body.drugName as string | undefined ?? body.drug_name as string | undefined;
-        startedAt       = body.startedAt as string | undefined ?? body.started_at as string | undefined;
-        endedAt         = body.endedAt as string | undefined ?? body.ended_at as string | undefined;
+        externalCallId  = str(body.externalCallId, body.external_call_id);
+        agentEmail      = str(body.agentEmail, body.agent_email);
+        patientRef      = str(body.patientRef, body.patient_ref);
+        drugName        = str(body.drugName, body.drug_name);
+        startedAt       = str(body.startedAt, body.started_at);
+        endedAt         = str(body.endedAt, body.ended_at);
         durationSeconds = body.durationSeconds ? Number(body.durationSeconds) : undefined;
         direction       = body.direction as 'inbound' | 'outbound' | undefined;
-        recordingUrl    = body.recordingUrl as string | undefined ?? body.recording_url as string | undefined;
+        recordingUrl    = str(body.recordingUrl, body.recording_url);
 
         if (!audioUrl) {
           res.status(400).json({ error: 'Request must include a multipart audio file or audioUrl in JSON body' });

@@ -165,7 +165,7 @@ function UploadCard({ onUploaded }: UploadCardProps) {
           <div>
             <div style={{ fontSize: 28, marginBottom: 4 }}>🎙️</div>
             <div style={{ fontSize: 13, color: '#4A5568' }}>Drag & drop or <strong>click to browse</strong></div>
-            <div style={{ fontSize: 11, color: '#A0AEC0', marginTop: 4 }}>MP3, WAV, M4A, WebM, OGG, MP4 · Max 25MB</div>
+            <div style={{ fontSize: 11, color: '#A0AEC0', marginTop: 4 }}>MP3, WAV, M4A, WebM, OGG, MP4 · Max 25MB (Whisper limit)</div>
           </div>
         )}
       </div>
