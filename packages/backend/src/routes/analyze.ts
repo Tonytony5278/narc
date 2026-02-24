@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { AnalyzeRequestSchema, AuditActions } from '@narc/shared';
 import { requireAuth } from '../middleware/auth';
-import { analyzeEmail } from '../services/claude';
+import { analyzeEmail, prescreenEmail } from '../services/claude';
 import { getActivePolicy, calibrateConfidence } from '../services/policy';
 import { computeDeadline, computeSlaStatus } from '../services/sla';
 import { auditLog } from '../services/audit';
@@ -28,6 +28,34 @@ router.post('/', requireAuth, async (req: Request, res: Response, next: NextFunc
 
     // Validate request body
     const analyzeReq = AnalyzeRequestSchema.parse(req.body);
+
+    // ── Pre-screener gate (skip with x-skip-prescreen: true for tests) ────────
+    let prescreenerPassed: boolean | null = null;
+    let prescreenerReason: string | null = null;
+
+    const skipPrescreen = req.headers['x-skip-prescreen'] === 'true';
+    if (!skipPrescreen) {
+      const ps = await prescreenEmail(
+        analyzeReq.subject,
+        analyzeReq.emailBody,
+        analyzeReq.sender
+      );
+      prescreenerPassed = ps.isAERelated;
+      prescreenerReason = ps.reason;
+
+      if (!ps.isAERelated) {
+        console.log(`[analyze] Pre-screener filtered out email from ${analyzeReq.sender} — "${ps.reason}" (conf: ${ps.confidence})`);
+        return res.json({
+          eventId: null,
+          findings: [],
+          hasAEs: false,
+          prescreened: true,
+          summary: ps.reason,
+          analysisNotes: `Pre-screener determined this email is not AE-related (confidence: ${(ps.confidence * 100).toFixed(0)}%).`,
+          monograph: null,
+        });
+      }
+    }
 
     // Load active policy (cached, non-blocking)
     const policy = await getActivePolicy();
@@ -97,6 +125,17 @@ router.post('/', requireAuth, async (req: Request, res: Response, next: NextFunc
       return { finding, rawConfidence, calibratedConfidence, severity, rule };
     });
 
+    // ── Confidence threshold gating (post-calibration) ────────────────────────
+    // Gate AFTER calibration so calibration can raise a score above the floor.
+    const thresholdFiltered = calibrated.filter(({ calibratedConfidence, rule }) => {
+      const minConf = (rule as { min_confidence?: number | null } | undefined)?.min_confidence ?? null;
+      return minConf == null || calibratedConfidence >= minConf;
+    });
+    const filteredCount = calibrated.length - thresholdFiltered.length;
+    if (filteredCount > 0) {
+      console.log(`[analyze] Threshold gating removed ${filteredCount} finding(s) below min_confidence floor`);
+    }
+
     // Persist everything in one ACID transaction
     const eventId = await withTransaction(async (client) => {
       const id = await insertEvent({
@@ -105,7 +144,7 @@ router.post('/', requireAuth, async (req: Request, res: Response, next: NextFunc
         sender: analyzeReq.sender,
         received_at: analyzeReq.receivedAt,
         body_excerpt: bodyExcerpt,
-        ae_count: aiResponse.findings.length,
+        ae_count: thresholdFiltered.length,
         max_severity: maxSeverity,
         status: 'pending',
         notes: '',
@@ -118,9 +157,11 @@ router.post('/', requireAuth, async (req: Request, res: Response, next: NextFunc
         policy_version_id: policy?.id ?? null,
         agent_id: actor.sub,
         model_version: MODEL_VERSION,
+        prescreener_passed: prescreenerPassed,
+        prescreener_reason: prescreenerReason,
       }, client);
 
-      for (const { finding, rawConfidence, calibratedConfidence, severity } of calibrated) {
+      for (const { finding, rawConfidence, calibratedConfidence, severity } of thresholdFiltered) {
         await insertFinding({
           event_id: id,
           excerpt: finding.excerpt,
@@ -144,11 +185,12 @@ router.post('/', requireAuth, async (req: Request, res: Response, next: NextFunc
         entityId: id,
         before: null,
         after: {
-          ae_count: aiResponse.findings.length,
+          ae_count: thresholdFiltered.length,
           max_severity: maxSeverity,
           sla_status: slaResult.sla_status,
           policy_version: policy?.version ?? null,
           drug: monograph?.brand_name ?? null,
+          prescreener_passed: prescreenerPassed,
         },
         req,
       }, client);
@@ -156,11 +198,11 @@ router.post('/', requireAuth, async (req: Request, res: Response, next: NextFunc
       return id;
     });
 
-    console.log(`[analyze] ✅ ${aiResponse.findings.length} AE(s), max severity: ${maxSeverity}, deadline: ${deadlineAt.toISOString()}`);
+    console.log(`[analyze] ✅ ${thresholdFiltered.length} AE(s) (${calibrated.length - thresholdFiltered.length} threshold-gated), max severity: ${maxSeverity}, deadline: ${deadlineAt.toISOString()}`);
 
     res.json({
       eventId,
-      findings: calibrated.map(({ finding, rawConfidence, calibratedConfidence, severity }, i) => ({
+      findings: thresholdFiltered.map(({ finding, rawConfidence, calibratedConfidence, severity }, i) => ({
         id: `pending-${i}`,  // real IDs require a second DB read; use pending for immediate response
         eventId,
         ...finding,

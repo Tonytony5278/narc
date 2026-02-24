@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { EventRecord, AEFindingRecord } from '@narc/shared';
 import StatusBadge from './StatusBadge';
 import SlaTimer from './SlaTimer';
@@ -15,6 +15,7 @@ import {
   type DocumentRecord,
   type E2BData,
   type MeddraSuggestion,
+  type DismissReason,
 } from '../api/client';
 import { buildE2BXml, downloadE2BXml, type E2BReaction } from '../utils/e2bXml';
 
@@ -46,6 +47,99 @@ const SEVERITY_HIGHLIGHT: Record<string, string> = {
   medium:   'rgba(214,158,46,0.18)',
   low:      'rgba(56,161,105,0.12)',
 };
+
+// ─── Dismiss Reason Picker ───────────────────────────────────────────────────
+
+const DISMISS_REASON_LABELS: Record<DismissReason, string> = {
+  positive_outcome:  '😊 Positive outcome',
+  administrative:    '📋 Administrative',
+  not_drug_related:  '🚫 Not drug-related',
+  duplicate:         '🔁 Duplicate',
+  ai_misunderstood:  '🤖 AI misread',
+  other:             '💬 Other',
+};
+
+interface DismissReasonPickerProps {
+  onSelect: (reason: DismissReason | null) => void;
+  countdown: number;
+}
+
+function DismissReasonPicker({ onSelect, countdown }: DismissReasonPickerProps) {
+  const pct = Math.min(100, (countdown / 5) * 100);
+  const barColor = countdown <= 2 ? '#C53030' : '#DD6B20';
+
+  return (
+    <div style={{
+      margin: '6px 0 10px',
+      border: '1px solid #E2E8F0',
+      borderRadius: 8,
+      overflow: 'hidden',
+      animation: 'fdIn 0.18s ease-out',
+    }}>
+      <div style={{
+        padding: '8px 12px 6px',
+        background: '#FAFAFA',
+        borderBottom: '1px solid #E2E8F0',
+        fontSize: 11, color: '#4A5568', fontWeight: 600,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <span>Why dismiss? <span style={{ color: '#A0AEC0', fontWeight: 400 }}>(optional)</span></span>
+        <span style={{ color: countdown <= 2 ? '#C53030' : '#DD6B20', fontWeight: 700 }}>
+          Auto in {countdown}s
+        </span>
+      </div>
+
+      {/* Countdown bar */}
+      <div style={{ height: 3, background: '#EDF2F7' }}>
+        <div style={{
+          height: '100%',
+          width: `${pct}%`,
+          background: barColor,
+          transition: 'width 1s linear, background 0.5s',
+        }} />
+      </div>
+
+      {/* Reason buttons */}
+      <div style={{ padding: '8px 10px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {(Object.entries(DISMISS_REASON_LABELS) as [DismissReason, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => onSelect(key)}
+            style={{
+              padding: '4px 10px',
+              background: '#fff',
+              border: '1px solid #CBD5E0',
+              borderRadius: 20,
+              fontSize: 11,
+              cursor: 'pointer',
+              color: '#4A5568',
+              transition: 'background 0.15s, border-color 0.15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#EBF4FF'; e.currentTarget.style.borderColor = '#90CDF4'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#CBD5E0'; }}
+          >
+            {label}
+          </button>
+        ))}
+        <button
+          onClick={() => onSelect(null)}
+          style={{
+            padding: '4px 10px',
+            background: '#fff',
+            border: '1px solid #CBD5E0',
+            borderRadius: 20,
+            fontSize: 11,
+            cursor: 'pointer',
+            color: '#718096',
+          }}
+        >
+          Skip
+        </button>
+      </div>
+      <style>{`@keyframes fdIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }`}</style>
+    </div>
+  );
+}
 
 interface HighlightSpan { start: number; end: number; text: string; }
 
@@ -607,6 +701,11 @@ export default function EventDetailModal({ event, onClose, onStatusChange, userR
   const [notes, setNotes] = useState(event.notes ?? '');
   const [tab, setTab] = useState<ActiveTab>('findings');
 
+  // ── Two-phase dismiss state ──────────────────────────────────────────────
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
+  const [dismissCountdown, setDismissCountdown] = useState(5);
+  const dismissTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Documents state
   const [docs, setDocs] = useState<DocumentRecord[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
@@ -632,12 +731,55 @@ export default function EventDetailModal({ event, onClose, onStatusChange, userR
   const isSupervisor = userRole === 'supervisor' || userRole === 'admin';
   const ext = event as EventRecord & { slaStatus?: string; deadlineAt?: string | null; escalationLevel?: number; bodyExcerpt?: string };
 
+  // Cleanup dismiss timer on unmount
+  useEffect(() => {
+    return () => { if (dismissTimerRef.current) clearInterval(dismissTimerRef.current); };
+  }, []);
+
   // Close on Escape key
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // ── Dismiss handlers ────────────────────────────────────────────────────
+
+  const commitDismiss = useCallback(async (id: string, reason: DismissReason | null) => {
+    if (dismissTimerRef.current) { clearInterval(dismissTimerRef.current); dismissTimerRef.current = null; }
+    setDismissingId(null);
+    setDismissCountdown(5);
+
+    // Optimistic update
+    setFindings((prev) =>
+      prev.map((f) => f.id === id ? { ...f, status: 'dismissed' as AEFindingRecord['status'] } : f)
+    );
+
+    // Fire-and-forget API call; revert on error
+    try {
+      await updateFindingStatus(event.id, id, 'dismissed', reason);
+    } catch {
+      setFindings((prev) =>
+        prev.map((f) => f.id === id ? { ...f, status: 'pending' as AEFindingRecord['status'] } : f)
+      );
+    }
+  }, [event.id]);
+
+  const handleDismissClick = useCallback((finding: AEFindingRecord) => {
+    if (dismissingId !== null) return; // guard: only one at a time
+    setDismissingId(finding.id);
+    setDismissCountdown(5);
+    dismissTimerRef.current = setInterval(() => {
+      setDismissCountdown((c) => {
+        if (c <= 1) {
+          // Auto-submit with no reason
+          void commitDismiss(finding.id, null);
+          return 5;
+        }
+        return c - 1;
+      });
+    }, 1000);
+  }, [dismissingId, commitDismiss]);
 
   // Load documents when tab is opened
   useEffect(() => {
@@ -682,6 +824,10 @@ export default function EventDetailModal({ event, onClose, onStatusChange, userR
   };
 
   const handleFindingAction = async (finding: AEFindingRecord, status: string) => {
+    if (status === 'dismissed') {
+      handleDismissClick(finding);
+      return;
+    }
     await updateFindingStatus(event.id, finding.id, status);
     setFindings((prev) =>
       prev.map((f) =>
@@ -836,9 +982,29 @@ export default function EventDetailModal({ event, onClose, onStatusChange, userR
                     {finding.explanation}
                   </div>
                   {finding.status === 'pending' && (
-                    <div style={{ padding: '8px 14px 12px', display: 'flex', gap: 8 }}>
-                      <button onClick={() => handleFindingAction(finding, 'reported')} style={{ padding: '5px 14px', background: '#2D6A4F', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✓ Mark Reported</button>
-                      <button onClick={() => handleFindingAction(finding, 'dismissed')} style={{ padding: '5px 14px', background: '#fff', color: '#718096', border: '1px solid #CBD5E0', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}>Dismiss</button>
+                    <div style={{ padding: '6px 14px 12px' }}>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: dismissingId === finding.id ? 0 : undefined }}>
+                        <button
+                          onClick={() => handleFindingAction(finding, 'reported')}
+                          disabled={dismissingId !== null}
+                          style={{ padding: '5px 14px', background: '#2D6A4F', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: dismissingId !== null ? 'not-allowed' : 'pointer', opacity: dismissingId !== null ? 0.6 : 1 }}
+                        >
+                          ✓ Mark Reported
+                        </button>
+                        <button
+                          onClick={() => handleDismissClick(finding)}
+                          disabled={dismissingId !== null}
+                          style={{ padding: '5px 14px', background: '#fff', color: '#718096', border: '1px solid #CBD5E0', borderRadius: 6, fontSize: 12, cursor: dismissingId !== null ? 'not-allowed' : 'pointer', opacity: dismissingId !== null && dismissingId !== finding.id ? 0.4 : 1 }}
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                      {dismissingId === finding.id && (
+                        <DismissReasonPicker
+                          countdown={dismissCountdown}
+                          onSelect={(reason) => void commitDismiss(finding.id, reason)}
+                        />
+                      )}
                     </div>
                   )}
                 </div>

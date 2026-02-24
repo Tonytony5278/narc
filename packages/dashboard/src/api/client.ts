@@ -135,14 +135,23 @@ export async function clearAllEvents(): Promise<number> {
   return data.deleted;
 }
 
+export type DismissReason =
+  | 'positive_outcome'
+  | 'administrative'
+  | 'not_drug_related'
+  | 'duplicate'
+  | 'ai_misunderstood'
+  | 'other';
+
 export async function updateFindingStatus(
   eventId: string,
   findingId: string,
-  status: string
+  status: string,
+  dismissReason?: DismissReason | null
 ): Promise<void> {
   const res = await apiFetch(`/events/${eventId}/findings/${findingId}`, {
     method: 'PATCH',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, dismissReason: dismissReason ?? null }),
   });
   if (!res.ok) throw new Error(`Failed to update finding: ${res.statusText}`);
 }
@@ -344,6 +353,23 @@ export async function fetchSignalTimeline(days = 30): Promise<{ timeline: Timeli
   const res = await apiFetch(`/signals/timeline?days=${days}`);
   if (!res.ok) throw new Error(`Failed to fetch signal timeline: ${res.statusText}`);
   return res.json() as Promise<{ timeline: TimelinePoint[]; periodDays: number }>;
+}
+
+export interface FPInsight {
+  category: string;
+  totalCount: number;
+  dismissedCount: number;
+  dismissRate: number;
+  avgConfidenceKept: number | null;
+  avgConfidenceDismissed: number | null;
+  topReasons: { reason: string; count: number }[];
+  recommendedMinConfidence: number | null;
+}
+
+export async function fetchFPInsights(days = 90): Promise<{ insights: FPInsight[]; periodDays: number; generatedAt: string; disclaimer: string }> {
+  const res = await apiFetch(`/signals/fp-insights?days=${days}`);
+  if (!res.ok) throw new Error(`Failed to fetch FP insights: ${res.statusText}`);
+  return res.json() as Promise<{ insights: FPInsight[]; periodDays: number; generatedAt: string; disclaimer: string }>;
 }
 
 // ─── Audit log ────────────────────────────────────────────────────────────────

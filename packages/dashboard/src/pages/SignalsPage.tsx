@@ -17,10 +17,13 @@ import {
   fetchDrugSignals,
   fetchCategorySignals,
   fetchSignalTimeline,
+  fetchFPInsights,
   type SignalSummary,
   type DrugSignal,
   type CategorySignal,
   type TimelinePoint,
+  type FPInsight,
+  type DismissReason,
 } from '../api/client';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -365,6 +368,110 @@ function CategoryBar({ cat }: { cat: CategorySignal }) {
   );
 }
 
+// ─── FP Insights sub-components ──────────────────────────────────────────────
+
+const DISMISS_REASON_LABELS: Record<DismissReason, string> = {
+  positive_outcome:  'Positive outcome',
+  administrative:    'Administrative',
+  not_drug_related:  'Not drug-related',
+  duplicate:         'Duplicate',
+  ai_misunderstood:  'AI misread',
+  other:             'Other',
+};
+
+const CATEGORY_LABELS_LONG: Record<string, string> = {
+  adverse_reaction:      'Adverse Reaction',
+  off_label_use:         'Off-Label Use',
+  off_label_dosing:      'Off-Label Dosing',
+  pregnancy_exposure:    'Pregnancy Exposure',
+  drug_interaction:      'Drug Interaction',
+  serious_adverse_event: 'Serious AE',
+  overdose:              'Overdose',
+  medication_error:      'Medication Error',
+};
+
+function FPInsightRow({ row }: { row: FPInsight }) {
+  const rate = row.dismissRate;
+  const ratePct = Math.round(rate * 100);
+  const pillColor = rate >= 0.5 ? '#C53030' : rate >= 0.3 ? '#DD6B20' : '#276749';
+  const pillBg   = rate >= 0.5 ? '#FFF5F5' : rate >= 0.3 ? '#FFFAF0' : '#F0FFF4';
+
+  const confKept = row.avgConfidenceKept != null ? Math.round(row.avgConfidenceKept * 100) : null;
+  const confDism = row.avgConfidenceDismissed != null ? Math.round(row.avgConfidenceDismissed * 100) : null;
+
+  return (
+    <div style={{
+      border: '1px solid #E2E8F0', borderRadius: 8, padding: '12px 16px',
+      marginBottom: 8, background: rate >= 0.5 ? '#FFF5F5' : rate >= 0.3 ? '#FFFAF0' : '#fff',
+    }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: '#1a1a2e' }}>
+          {CATEGORY_LABELS_LONG[row.category] ?? row.category}
+        </div>
+        {/* Dismiss rate pill */}
+        <span style={{
+          fontSize: 11, fontWeight: 800, padding: '2px 10px', borderRadius: 20,
+          background: pillBg, color: pillColor, border: `1px solid ${pillColor}40`,
+        }}>
+          {ratePct}% dismissed ({row.dismissedCount}/{row.totalCount})
+        </span>
+      </div>
+
+      {/* Confidence gap */}
+      {(confKept != null || confDism != null) && (
+        <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 11, color: '#4A5568', flexWrap: 'wrap' }}>
+          {confKept != null && (
+            <span>
+              <span style={{ fontWeight: 700, color: '#276749' }}>Kept avg:</span>{' '}
+              <span style={{ fontWeight: 600 }}>{confKept}% conf.</span>
+            </span>
+          )}
+          {confDism != null && (
+            <span>
+              <span style={{ fontWeight: 700, color: '#C53030' }}>Dismissed avg:</span>{' '}
+              <span style={{ fontWeight: 600 }}>{confDism}% conf.</span>
+            </span>
+          )}
+          {confKept != null && confDism != null && (
+            <span style={{ color: '#718096' }}>
+              Gap: {confKept - confDism > 0 ? `+${confKept - confDism}` : confKept - confDism}%
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Top reasons as badges */}
+      {row.topReasons.length > 0 && (
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
+          <span style={{ fontSize: 10, color: '#718096', fontWeight: 600, alignSelf: 'center' }}>Top reasons:</span>
+          {row.topReasons.map(({ reason, count }) => (
+            <span key={reason} style={{
+              fontSize: 10, padding: '2px 8px', borderRadius: 12,
+              background: '#EDF2F7', color: '#4A5568', border: '1px solid #E2E8F0',
+            }}>
+              {DISMISS_REASON_LABELS[reason as DismissReason] ?? reason} ({count})
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Threshold recommendation banner */}
+      {row.recommendedMinConfidence != null && (
+        <div style={{
+          marginTop: 10, padding: '8px 12px',
+          background: '#EBF8FF', border: '1px solid #BEE3F8',
+          borderRadius: 6, fontSize: 11, color: '#2B6CB0', lineHeight: 1.5,
+        }}>
+          💡 <strong>Recommended min confidence: {Math.round(row.recommendedMinConfidence * 100)}%</strong>
+          {' '}— Would have filtered ~70% of what nurses dismissed in this category.
+          <span style={{ color: '#718096', marginLeft: 6 }}>Apply via Policy page →</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function SignalsPage() {
@@ -376,22 +483,25 @@ export default function SignalsPage() {
   const [drugs,      setDrugs]      = useState<DrugSignal[]>([]);
   const [categories, setCategories] = useState<CategorySignal[]>([]);
   const [timeline,   setTimeline]   = useState<TimelinePoint[]>([]);
-  const [activeTab,  setActiveTab]  = useState<'drugs' | 'categories'>('drugs');
+  const [fpInsights, setFpInsights] = useState<FPInsight[]>([]);
+  const [activeTab,  setActiveTab]  = useState<'drugs' | 'categories' | 'fp-insights'>('drugs');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [sum, drugData, catData, timeData] = await Promise.all([
+      const [sum, drugData, catData, timeData, fpData] = await Promise.all([
         fetchSignalSummary(days),
         fetchDrugSignals(days),
         fetchCategorySignals(days),
         fetchSignalTimeline(Math.min(days, 60)),
+        fetchFPInsights(days),
       ]);
       setSummary(sum);
       setDrugs(drugData.signals);
       setCategories(catData.categories);
       setTimeline(timeData.timeline);
+      setFpInsights(fpData.insights);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load signals');
     } finally {
@@ -507,23 +617,27 @@ export default function SignalsPage() {
       {!loading && (
         <>
           <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #E2E8F0', marginBottom: 16 }}>
-            {(['drugs', 'categories'] as const).map((t) => (
+            {([
+              { id: 'drugs'       as const, label: `💊 Drug Signals (${drugs.length})` },
+              { id: 'categories'  as const, label: `📋 AE Categories (${categories.length})` },
+              { id: 'fp-insights' as const, label: `🎯 FP Insights${fpInsights.some(r => r.recommendedMinConfidence != null) ? ' 💡' : ''}` },
+            ]).map(({ id, label }) => (
               <button
-                key={t}
-                onClick={() => setActiveTab(t)}
+                key={id}
+                onClick={() => setActiveTab(id)}
                 style={{
                   padding: '8px 20px',
                   background: 'none',
                   border: 'none',
-                  borderBottom: activeTab === t ? '2px solid #9B2335' : '2px solid transparent',
-                  color: activeTab === t ? '#1a1a2e' : '#718096',
-                  fontWeight: activeTab === t ? 700 : 400,
+                  borderBottom: activeTab === id ? '2px solid #9B2335' : '2px solid transparent',
+                  color: activeTab === id ? '#1a1a2e' : '#718096',
+                  fontWeight: activeTab === id ? 700 : 400,
                   fontSize: 13,
                   cursor: 'pointer',
                   marginBottom: -2,
                 }}
               >
-                {t === 'drugs' ? `💊 Drug Signals (${drugs.length})` : `📋 AE Categories (${categories.length})`}
+                {label}
               </button>
             ))}
           </div>
@@ -577,6 +691,59 @@ export default function SignalsPage() {
                   ))}
                 </>
               )}
+            </div>
+          )}
+
+          {/* FP Insights panel */}
+          {activeTab === 'fp-insights' && (
+            <div>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a2e', marginBottom: 4 }}>
+                  False Positive Insights
+                </div>
+                <div style={{ fontSize: 12, color: '#718096', lineHeight: 1.5 }}>
+                  Based on nurse dismissal patterns in the last {days} days.
+                  Categories where nurses frequently dismiss findings are shown first.
+                </div>
+              </div>
+
+              {fpInsights.length === 0 ? (
+                <div style={{
+                  padding: '40px 20px', textAlign: 'center', color: '#A0AEC0', fontSize: 13,
+                  border: '2px dashed #E2E8F0', borderRadius: 10,
+                }}>
+                  <div style={{ fontSize: 28, marginBottom: 10 }}>🎯</div>
+                  <div style={{ fontWeight: 600, marginBottom: 6, color: '#718096' }}>No dismissal data yet</div>
+                  <div style={{ fontSize: 11, maxWidth: 340, margin: '0 auto', lineHeight: 1.6 }}>
+                    FP Insights appear once nurses start dismissing findings with reasons.
+                    Use the Dismiss button in the event modal to capture reasons.
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {fpInsights.some(r => r.recommendedMinConfidence != null) && (
+                    <div style={{
+                      marginBottom: 14, padding: '10px 14px',
+                      background: '#EBF8FF', border: '1px solid #BEE3F8',
+                      borderRadius: 8, fontSize: 11, color: '#2B6CB0', lineHeight: 1.5,
+                    }}>
+                      <strong>💡 Threshold recommendations available</strong> — The categories below have confidence floor recommendations based on your team's dismissal patterns.
+                      To apply, navigate to <strong>Admin → Policy</strong> and set min_confidence on the relevant detection rules.
+                    </div>
+                  )}
+                  {fpInsights.map((row) => (
+                    <FPInsightRow key={row.category} row={row} />
+                  ))}
+                </>
+              )}
+
+              <div style={{
+                marginTop: 16, padding: '10px 14px',
+                background: '#FFFAF0', border: '1px solid #F6AD55',
+                borderRadius: 8, fontSize: 11, color: '#744210', lineHeight: 1.5,
+              }}>
+                <strong>⚠️ Advisory only:</strong> Threshold recommendations are calculated from nurse dismissal patterns and should be reviewed by a qualified pharmacovigilance professional before applying. Raising thresholds reduces alert volume but may miss genuine AEs.
+              </div>
             </div>
           )}
         </>

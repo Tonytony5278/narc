@@ -11,6 +11,80 @@ function getClient(): Anthropic {
 }
 
 export const MODEL_VERSION = 'claude-opus-4-6';
+export const PRESCREENER_MODEL = 'claude-haiku-4-5';
+
+// ─── Pre-screener ──────────────────────────────────────────────────────────
+
+const PRESCREENER_SCHEMA = {
+  type: 'object',
+  properties: {
+    isAERelated: {
+      type: 'boolean',
+      description: 'True if the email could plausibly contain an adverse event, false if it is purely administrative/positive',
+    },
+    reason: {
+      type: 'string',
+      description: 'One sentence explaining the decision',
+    },
+    confidence: {
+      type: 'number',
+      description: 'Confidence in the decision (0.0–1.0)',
+    },
+  },
+  required: ['isAERelated', 'reason', 'confidence'],
+} as const;
+
+/**
+ * Cheap Haiku pre-screener: decides if an email is worth full Opus analysis.
+ * Conservative by design — when in doubt returns isAERelated: true.
+ * On ANY error returns fail-open so a real AE is never silenced.
+ */
+export async function prescreenEmail(
+  subject: string,
+  emailBody: string,
+  sender: string
+): Promise<{ isAERelated: boolean; reason: string; confidence: number }> {
+  try {
+    const body = emailBody.slice(0, 2000);
+    const message = await getClient().messages.create({
+      model: PRESCREENER_MODEL,
+      max_tokens: 256,
+      system: `You are a pharmacovigilance email screener. Your job is to quickly decide whether an email MIGHT contain an adverse drug event (ADE) report, off-label use, overdose, or safety signal that requires pharmacovigilance review.
+
+CONSERVATIVE RULE: If there is ANY doubt, return isAERelated: true. It is far safer to pass a false positive to full analysis than to miss a real AE. Only return isAERelated: false when the email is CLEARLY and UNAMBIGUOUSLY administrative (e.g., appointment reminders, insurance pre-authorizations, refill requests with no symptoms, congratulatory messages, positive outcome-only reports with zero safety signals).`,
+      messages: [
+        {
+          role: 'user',
+          content: `Sender: ${sender}\nSubject: ${subject}\n\nEmail body (first 2000 chars):\n${body}\n\nIs this email potentially AE-related? Use the screen_result tool.`,
+        },
+      ],
+      tools: [
+        {
+          name: 'screen_result',
+          description: 'Return the pre-screening decision',
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          input_schema: PRESCREENER_SCHEMA as any,
+        },
+      ],
+      tool_choice: { type: 'tool', name: 'screen_result' },
+    });
+
+    const toolUse = message.content.find((b) => b.type === 'tool_use');
+    if (!toolUse || toolUse.type !== 'tool_use') {
+      return { isAERelated: true, reason: 'prescreener_no_tool_use_fail_open', confidence: 1 };
+    }
+    const input = toolUse.input as { isAERelated: boolean; reason: string; confidence: number };
+    return {
+      isAERelated: Boolean(input.isAERelated),
+      reason: String(input.reason ?? ''),
+      confidence: Number(input.confidence ?? 1),
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[prescreener] Error — failing open:', msg);
+    return { isAERelated: true, reason: 'prescreener_error_fail_open', confidence: 1 };
+  }
+}
 
 // ─── System Prompt ─────────────────────────────────────────────────────────
 // This is the core IP of the NARC product.

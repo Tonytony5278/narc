@@ -26,7 +26,7 @@
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import type { AnalyzeRequest } from '@narc/shared';
-import { analyzeEmail } from './claude';
+import { analyzeEmail, prescreenEmail } from './claude';
 import { getActivePolicy, calibrateConfidence } from './policy';
 import { computeDeadline, computeSlaStatus } from './sla';
 import { withTransaction } from '../db/pool';
@@ -113,6 +113,15 @@ async function processRawEmail(rawBuffer: Buffer, uid: number): Promise<void> {
     return;
   }
 
+  // ── Pre-screener gate ──────────────────────────────────────────────────────
+  const ps = await prescreenEmail(subject, body, sender);
+  if (!ps.isAERelated) {
+    console.log(`[monitor] Pre-screener filtered UID ${uid} — "${ps.reason}"`);
+    _state.processedTotal++;
+    _state.lastChecked = new Date().toISOString();
+    return; // mark as seen below, skip full Opus analysis
+  }
+
   console.log(`[monitor] 🔍 Analyzing UID ${uid}: "${subject}" from ${sender}`);
 
   const analyzeReq: AnalyzeRequest = {
@@ -158,8 +167,21 @@ async function processRawEmail(rawBuffer: Buffer, uid: number): Promise<void> {
     const rawConfidence = finding.confidence;
     const calibratedConfidence = rule ? calibrateConfidence(rawConfidence, rule) : rawConfidence;
     const severity = (rule?.severity_override as string | undefined) ?? finding.severity;
-    return { finding, rawConfidence, calibratedConfidence, severity };
+    return { finding, rawConfidence, calibratedConfidence, severity, rule };
   });
+
+  // ── Confidence threshold gating (post-calibration) ────────────────────────
+  const thresholdFiltered = calibrated.filter(({ calibratedConfidence, rule }) => {
+    const minConf = (rule as { min_confidence?: number | null } | undefined)?.min_confidence ?? null;
+    return minConf == null || calibratedConfidence >= minConf;
+  });
+
+  if (thresholdFiltered.length === 0 && calibrated.length > 0) {
+    console.log(`[monitor] UID ${uid} — all ${calibrated.length} finding(s) below min_confidence floor, skipping`);
+    _state.processedTotal++;
+    _state.lastChecked = new Date().toISOString();
+    return;
+  }
 
   // Persist event + findings in one transaction
   const eventId = await withTransaction(async (client) => {
@@ -170,7 +192,7 @@ async function processRawEmail(rawBuffer: Buffer, uid: number): Promise<void> {
         sender,
         received_at: receivedAt,
         body_excerpt: body.slice(0, 500),
-        ae_count: aiResponse.findings.length,
+        ae_count: thresholdFiltered.length,
         max_severity: maxSeverity,
         status: 'pending',
         notes: '',
@@ -187,7 +209,7 @@ async function processRawEmail(rawBuffer: Buffer, uid: number): Promise<void> {
       client
     );
 
-    for (const { finding, rawConfidence, calibratedConfidence, severity } of calibrated) {
+    for (const { finding, rawConfidence, calibratedConfidence, severity } of thresholdFiltered) {
       await insertFinding(
         {
           event_id: id,
@@ -213,7 +235,7 @@ async function processRawEmail(rawBuffer: Buffer, uid: number): Promise<void> {
   _state.aeDetectedTotal++;
 
   console.log(
-    `[monitor] ✅ Event ${eventId} created — ${aiResponse.findings.length} AE(s), severity: ${maxSeverity}, deadline: ${deadlineAt.toISOString()}`
+    `[monitor] ✅ Event ${eventId} created — ${thresholdFiltered.length} AE(s), severity: ${maxSeverity}, deadline: ${deadlineAt.toISOString()}`
   );
 
   // Send immediate email alert for critical / high severity
@@ -223,12 +245,12 @@ async function processRawEmail(rawBuffer: Buffer, uid: number): Promise<void> {
       subject,
       sender,
       maxSeverity,
-      aeCount: aiResponse.findings.length,
+      aeCount: thresholdFiltered.length,
       detectedAt: detectedAt.toISOString(),
       deadlineAt: deadlineAt.toISOString(),
       summary: aiResponse.summary,
       source: 'inbox_monitor',
-      findings: calibrated.map(({ finding, severity }) => ({
+      findings: thresholdFiltered.map(({ finding, severity }) => ({
         category: finding.category,
         severity,
         excerpt: finding.excerpt,

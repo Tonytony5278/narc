@@ -128,6 +128,19 @@ export type UserRoleType = z.infer<typeof UserRole>;
 export const SlaStatus = z.enum(['on_track', 'at_risk', 'breached', 'met']);
 export type SlaStatusType = z.infer<typeof SlaStatus>;
 
+// ─── Dismiss Reason ──────────────────────────────────────────────────────────
+
+export const DismissReason = z.enum([
+  'positive_outcome',    // Patient reported positive or neutral outcome — not an AE
+  'administrative',      // Appointment reminder, refill request, admin message
+  'not_drug_related',    // Symptom clearly attributed to another cause
+  'duplicate',           // Already reported in a previous event
+  'ai_misunderstood',    // Claude misclassified benign text as an AE signal
+  'other',               // None of the above — see event notes for context
+]);
+
+export type DismissReasonType = z.infer<typeof DismissReason>;
+
 // ─── Status Update Requests ──────────────────────────────────────────────────
 
 export const EventStatusUpdateSchema = z.object({
@@ -137,6 +150,7 @@ export const EventStatusUpdateSchema = z.object({
 
 export const FindingStatusUpdateSchema = z.object({
   status: FindingStatus,
+  dismissReason: DismissReason.nullable().optional(),
 });
 
 // ─── Database record types (what the API returns) ───────────────────────────
@@ -148,6 +162,8 @@ export const AEFindingRecordSchema = AEFindingSchema.extend({
   modelVersion: z.string().nullable().optional(),
   rawConfidence: z.number().nullable().optional(),
   calibratedConfidence: z.number().nullable().optional(),
+  dismissReason: DismissReason.nullable().optional(),
+  dismissedAt: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -231,6 +247,7 @@ export const DetectionRuleSchema = z.object({
   isEnabled: z.boolean(),
   conditions: z.unknown(),
   keywords: z.array(z.string()),
+  minConfidence: z.number().min(0).max(1).nullable().optional(),
   createdAt: z.string(),
 });
 

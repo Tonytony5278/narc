@@ -211,7 +211,12 @@ router.patch('/:eventId/findings/:findingId', requireAuth, async (req: Request, 
     }
 
     await withTransaction(async (client) => {
-      const updated = await updateFindingStatus(req.params.findingId, update.status, client);
+      const updated = await updateFindingStatus({
+        id: req.params.findingId,
+        status: update.status,
+        dismissReason: update.dismissReason ?? null,
+        dismissedBy: actor.sub,
+      }, client);
       if (!updated) throw Object.assign(new Error('Finding not found'), { statusCode: 404 });
 
       await auditLog({
@@ -220,7 +225,7 @@ router.patch('/:eventId/findings/:findingId', requireAuth, async (req: Request, 
         entityType: 'finding',
         entityId: req.params.findingId,
         before: null,
-        after: { status: update.status, eventId: req.params.eventId },
+        after: { status: update.status, dismissReason: update.dismissReason ?? null, eventId: req.params.eventId },
         req,
       }, client);
     });

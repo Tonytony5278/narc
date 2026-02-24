@@ -15,6 +15,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { getPool } from '../db/pool';
+import { getFPInsights } from '../db/queries/findings';
 
 const router = Router();
 
@@ -415,6 +416,25 @@ router.get('/timeline', requireAuth, async (req: Request, res: Response, next: N
     }
 
     res.json({ timeline, periodDays: days, generatedAt: new Date().toISOString() });
+  } catch (err) { next(err); }
+});
+
+/**
+ * GET /api/signals/fp-insights
+ * Per-category false-positive analysis.
+ * Returns dismiss rates, confidence gaps, top reasons, and threshold recommendations.
+ * Query params: days (default: 90, max: 365)
+ */
+router.get('/fp-insights', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const days = Math.min(parseInt(req.query.days as string ?? '90', 10) || 90, 365);
+    const insights = await getFPInsights(days);
+    res.json({
+      insights,
+      periodDays: days,
+      generatedAt: new Date().toISOString(),
+      disclaimer: 'Threshold recommendations are advisory. Apply via Policy page.',
+    });
   } catch (err) { next(err); }
 });
 

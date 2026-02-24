@@ -50,6 +50,9 @@ export interface InsertEventParams {
   policy_version_id: string | null;
   agent_id: string | null;
   model_version: string | null;
+  // Pre-screener audit (migration 013) — optional; null when pre-screen was skipped
+  prescreener_passed?: boolean | null;
+  prescreener_reason?: string | null;
 }
 
 export interface EventsFilter {
@@ -100,9 +103,10 @@ export async function insertEvent(
        ae_count, max_severity, status, notes,
        raw_request, raw_response,
        detected_at, deadline_at, sla_status, escalation_level,
-       policy_version_id, agent_id, model_version
+       policy_version_id, agent_id, model_version,
+       prescreener_passed, prescreener_reason
      ) VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20
      ) RETURNING id`,
     [
       params.email_id, params.subject, params.sender, params.received_at, params.body_excerpt,
@@ -110,6 +114,7 @@ export async function insertEvent(
       params.raw_request, params.raw_response,
       params.detected_at, params.deadline_at, params.sla_status, params.escalation_level,
       params.policy_version_id, params.agent_id, params.model_version,
+      params.prescreener_passed ?? null, params.prescreener_reason ?? null,
     ]
   );
   return rows[0].id;
