@@ -26,7 +26,11 @@ export function useEvents(filter: EventsFilter = {}): UseEventsResult {
 
   const load = useCallback(async () => {
     try {
-      setLoading(true);
+      // Only show the loading skeleton on the very first fetch.
+      // Background polls must be silent so an open modal is never unmounted.
+      if (isFirstLoadRef.current) {
+        setLoading(true);
+      }
       setError(null);
       const data = await fetchEvents(filter);
 

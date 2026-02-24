@@ -10,20 +10,29 @@ import MonographPage from './pages/MonographPage';
 import UsersPage from './pages/UsersPage';
 import MonitorPage from './pages/MonitorPage';
 import SignalsPage from './pages/SignalsPage';
+import RegulatoryPage from './pages/RegulatoryPage';
 import type { EventsFilter } from './api/client';
 import { clearAllEvents } from './api/client';
 
-type ActiveTab = 'events' | 'audit' | 'policy' | 'monographs' | 'users' | 'monitor' | 'signals';
+type ActiveTab = 'events' | 'audit' | 'policy' | 'monographs' | 'users' | 'monitor' | 'signals' | 'regulatory';
 
-const NAV_ITEMS: { id: ActiveTab; label: string; icon: string; adminOnly?: boolean }[] = [
-  { id: 'events',     label: 'Events',     icon: '📋' },
-  { id: 'signals',    label: 'Signals',    icon: '📊', adminOnly: true },
-  { id: 'monitor',    label: 'Monitor',    icon: '📡', adminOnly: true },
-  { id: 'monographs', label: 'Monographs', icon: '💊', adminOnly: true },
-  { id: 'policy',     label: 'Policy',     icon: '📄', adminOnly: true },
-  { id: 'audit',      label: 'Audit Log',  icon: '🔍', adminOnly: true },
-  { id: 'users',      label: 'Users',      icon: '👥', adminOnly: true },
+const NAV_ITEMS: { id: ActiveTab; label: string; adminOnly?: boolean }[] = [
+  { id: 'events',      label: 'Events' },
+  { id: 'signals',     label: 'Signals',     adminOnly: true },
+  { id: 'regulatory',  label: 'Regulatory',  adminOnly: true },
+  { id: 'monitor',     label: 'Monitor',     adminOnly: true },
+  { id: 'monographs',  label: 'Monographs',  adminOnly: true },
+  { id: 'policy',      label: 'Policy',      adminOnly: true },
+  { id: 'audit',       label: 'Audit Log',   adminOnly: true },
+  { id: 'users',       label: 'Users',       adminOnly: true },
 ];
+
+/** Human-readable labels for backend role slugs */
+const ROLE_DISPLAY: Record<string, string> = {
+  admin:      'Administrator',
+  supervisor: 'Supervisor',
+  agent:      'Case Manager',
+};
 
 export default function App() {
   const { user, isAuthenticated, isAdmin, login, logout } = useAuth();
@@ -122,7 +131,7 @@ export default function App() {
           </div>
 
           {/* Nav tabs */}
-          {NAV_ITEMS.filter(n => canAccess(n.adminOnly)).map(({ id, label, icon }) => {
+          {NAV_ITEMS.filter(n => canAccess(n.adminOnly)).map(({ id, label }) => {
             const isActive  = tab === id;
             const showBadge = id === 'events' && newEvents.length > 0;
             return (
@@ -130,33 +139,33 @@ export default function App() {
                 key={id}
                 onClick={() => { setTab(id); if (id === 'events') clearNewEvents(); }}
                 style={{
-                  padding: '0 14px',
+                  padding: '0 16px',
                   height: '100%',
-                  background: isActive ? 'rgba(155,35,53,0.18)' : 'none',
+                  background: 'none',
                   border: 'none',
                   borderBottom: isActive ? '2px solid #9B2335' : '2px solid transparent',
-                  color: isActive ? '#fff' : 'rgba(255,255,255,0.55)',
+                  color: isActive ? '#fff' : 'rgba(255,255,255,0.5)',
                   fontWeight: isActive ? 600 : 400,
                   fontSize: 13,
+                  letterSpacing: '0.01em',
                   cursor: 'pointer',
-                  transition: 'color var(--transition), background var(--transition)',
+                  transition: 'color var(--transition)',
                   position: 'relative',
                   display: 'flex', alignItems: 'center', gap: 6,
                   whiteSpace: 'nowrap',
                 }}
-                onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = 'rgba(255,255,255,0.85)'; }}
-                onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = 'rgba(255,255,255,0.55)'; }}
+                onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = 'rgba(255,255,255,0.82)'; }}
+                onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
               >
-                <span style={{ fontSize: 14, opacity: isActive ? 1 : 0.75 }}>{icon}</span>
                 {label}
                 {showBadge && (
                   <span style={{
-                    background: '#E53E3E', color: '#fff',
-                    borderRadius: '50%', minWidth: 16, height: 16,
-                    fontSize: 9, fontWeight: 800,
+                    background: '#9B2335', color: '#fff',
+                    borderRadius: 10, minWidth: 18, height: 18,
+                    fontSize: 9.5, fontWeight: 700,
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    padding: '0 3px',
-                    lineHeight: 1,
+                    padding: '0 4px',
+                    letterSpacing: 0,
                   }}>
                     {newEvents.length > 9 ? '9+' : newEvents.length}
                   </span>
@@ -236,7 +245,7 @@ export default function App() {
                   {user.email.split('@')[0]}
                 </div>
                 <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  {user.role}
+                  {ROLE_DISPLAY[user.role] ?? user.role}
                 </div>
               </div>
             </div>
@@ -338,12 +347,13 @@ export default function App() {
           </>
         )}
 
-        {tab === 'audit'      && <AuditLogPage />}
-        {tab === 'policy'     && <PolicyPage />}
-        {tab === 'monographs' && <MonographPage />}
-        {tab === 'users'      && <UsersPage />}
-        {tab === 'monitor'    && <MonitorPage />}
-        {tab === 'signals'    && <SignalsPage />}
+        {tab === 'audit'       && <AuditLogPage />}
+        {tab === 'policy'      && <PolicyPage />}
+        {tab === 'monographs'  && <MonographPage />}
+        {tab === 'users'       && <UsersPage />}
+        {tab === 'monitor'     && <MonitorPage />}
+        {tab === 'signals'     && <SignalsPage />}
+        {tab === 'regulatory'  && <RegulatoryPage userRole={user?.role ?? (devBypass ? 'admin' : 'agent')} />}
       </main>
 
       {/* ── New AE Toast ── */}

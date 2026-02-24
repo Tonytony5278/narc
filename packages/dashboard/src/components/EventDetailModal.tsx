@@ -31,14 +31,14 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
-  adverse_reaction: '#E65100',
-  off_label_use: '#6A1B9A',
-  off_label_dosing: '#4A148C',
-  pregnancy_exposure: '#880E4F',
-  drug_interaction: '#1565C0',
-  serious_adverse_event: '#B71C1C',
-  overdose: '#BF360C',
-  medication_error: '#33691E',
+  adverse_reaction:      '#1E3A5F',
+  off_label_use:         '#3D2965',
+  off_label_dosing:      '#2D3F55',
+  pregnancy_exposure:    '#5B2358',
+  drug_interaction:      '#1A4A6B',
+  serious_adverse_event: '#7B1D1D',
+  overdose:              '#6B2D0B',
+  medication_error:      '#1A4731',
 };
 
 const SEVERITY_HIGHLIGHT: Record<string, string> = {
@@ -691,20 +691,32 @@ interface EventDetailModalProps {
   onClose: () => void;
   onStatusChange: (id: string, status: string) => void;
   userRole?: string;
+  /** Open this tab by default (e.g. 'e2b' when launched from the Regulatory page) */
+  defaultTab?: string;
 }
 
 type ActiveTab = 'findings' | 'sla' | 'body' | 'documents' | 'submit' | 'e2b';
 
-export default function EventDetailModal({ event, onClose, onStatusChange, userRole }: EventDetailModalProps) {
+export default function EventDetailModal({ event, onClose, onStatusChange, userRole, defaultTab }: EventDetailModalProps) {
   const [findings, setFindings] = useState<AEFindingRecord[]>(event.findings);
   const [saving, setSaving] = useState(false);
   const [notes, setNotes] = useState(event.notes ?? '');
-  const [tab, setTab] = useState<ActiveTab>('findings');
+  const [tab, setTab] = useState<ActiveTab>((defaultTab as ActiveTab) ?? 'findings');
 
   // ── Two-phase dismiss state ──────────────────────────────────────────────
   const [dismissingId, setDismissingId] = useState<string | null>(null);
   const [dismissCountdown, setDismissCountdown] = useState(5);
   const dismissTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Finding explanation expand/collapse ──────────────────────────────────
+  const [expandedFindings, setExpandedFindings] = useState<Set<string>>(new Set());
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedFindings(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
 
   // Documents state
   const [docs, setDocs] = useState<DocumentRecord[]>([]);
@@ -960,41 +972,129 @@ export default function EventDetailModal({ event, onClose, onStatusChange, userR
           {/* ── Findings tab ── */}
           {tab === 'findings' && (
             <>
-              {findings.map((finding) => (
-                <div key={finding.id} style={{ border: '1px solid #E2E8F0', borderRadius: 8, marginBottom: 16, overflow: 'hidden', opacity: finding.status === 'dismissed' ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-                  <div style={{ background: '#F7FAFC', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: CATEGORY_COLORS[finding.category] ?? '#718096', color: '#fff' }}>
+              {findings.map((finding) => {
+                const isExpanded = expandedFindings.has(finding.id);
+                return (
+                <div key={finding.id} style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  marginBottom: 12,
+                  overflow: 'hidden',
+                  opacity: finding.status === 'dismissed' ? 0.45 : 1,
+                  transition: 'opacity 0.2s',
+                  background: '#fff',
+                }}>
+                  {/* ── Card header ── */}
+                  <div style={{
+                    background: 'var(--bg-subtle)',
+                    padding: '9px 14px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 8,
+                    borderBottom: '1px solid var(--border-light)',
+                  }}>
+                    <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 600,
+                        padding: '2px 9px', borderRadius: 4,
+                        background: CATEGORY_COLORS[finding.category] ?? '#2D3F55',
+                        color: '#fff',
+                        letterSpacing: '0.01em',
+                      }}>
                         {CATEGORY_LABELS[finding.category] ?? finding.category}
                       </span>
                       <StatusBadge value={finding.severity} type="severity" small />
-                      <span style={{ fontSize: 11, color: '#718096' }}>Urgency: <strong>{finding.urgency.replace(/_/g, ' ')}</strong></span>
-                      <span style={{ fontSize: 11, color: '#718096' }}>Confidence: <strong>{Math.round(finding.confidence * 100)}%</strong></span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {finding.urgency.replace(/_/g, ' ')}
+                      </span>
                     </div>
-                    <StatusBadge value={finding.status} type="status" small />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                        {Math.round(finding.confidence * 100)}%
+                      </span>
+                      <StatusBadge value={finding.status} type="status" small />
+                    </div>
                   </div>
-                  <div style={{ padding: '12px 14px', background: '#FFFBEA', borderBottom: '1px solid #E2E8F0' }}>
-                    <blockquote style={{ margin: 0, paddingLeft: 12, borderLeft: '3px solid #F6AD55', fontSize: 13, color: '#744210', fontStyle: 'italic' }}>
+
+                  {/* ── Excerpt ── */}
+                  <div style={{ padding: '11px 14px 10px', borderBottom: '1px solid var(--border-light)' }}>
+                    <blockquote style={{
+                      margin: 0,
+                      paddingLeft: 11,
+                      borderLeft: '3px solid #C9A84C',
+                      fontSize: 13,
+                      color: '#5C3D00',
+                      fontStyle: 'italic',
+                      lineHeight: 1.55,
+                    }}>
                       "{finding.excerpt}"
                     </blockquote>
                   </div>
-                  <div style={{ padding: '10px 14px', fontSize: 13, color: '#4A5568', lineHeight: 1.5 }}>
-                    {finding.explanation}
+
+                  {/* ── Explanation (collapsible) ── */}
+                  <div style={{ padding: '10px 14px 4px' }}>
+                    <div style={{
+                      fontSize: 13,
+                      color: 'var(--text-secondary)',
+                      lineHeight: 1.6,
+                      overflow: 'hidden',
+                      display: '-webkit-box',
+                      WebkitBoxOrient: 'vertical',
+                      WebkitLineClamp: isExpanded ? 'unset' : 2,
+                    } as React.CSSProperties}>
+                      {finding.explanation}
+                    </div>
+                    <button
+                      onClick={() => toggleExpanded(finding.id)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: '3px 0 8px',
+                        fontSize: 12,
+                        color: 'var(--brand)',
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                      }}
+                    >
+                      {isExpanded ? 'Show less' : 'Show rationale'}
+                    </button>
                   </div>
+
+                  {/* ── Actions ── */}
                   {finding.status === 'pending' && (
-                    <div style={{ padding: '6px 14px 12px' }}>
-                      <div style={{ display: 'flex', gap: 8, marginBottom: dismissingId === finding.id ? 0 : undefined }}>
+                    <div style={{ padding: '4px 14px 12px', borderTop: '1px solid var(--border-light)' }}>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                         <button
                           onClick={() => handleFindingAction(finding, 'reported')}
                           disabled={dismissingId !== null}
-                          style={{ padding: '5px 14px', background: '#2D6A4F', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: dismissingId !== null ? 'not-allowed' : 'pointer', opacity: dismissingId !== null ? 0.6 : 1 }}
+                          style={{
+                            padding: '5px 14px',
+                            background: 'var(--success)',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: 'var(--radius-sm)',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: dismissingId !== null ? 'not-allowed' : 'pointer',
+                            opacity: dismissingId !== null ? 0.6 : 1,
+                          }}
                         >
-                          ✓ Mark Reported
+                          Mark Reported
                         </button>
                         <button
                           onClick={() => handleDismissClick(finding)}
                           disabled={dismissingId !== null}
-                          style={{ padding: '5px 14px', background: '#fff', color: '#718096', border: '1px solid #CBD5E0', borderRadius: 6, fontSize: 12, cursor: dismissingId !== null ? 'not-allowed' : 'pointer', opacity: dismissingId !== null && dismissingId !== finding.id ? 0.4 : 1 }}
+                          style={{
+                            padding: '5px 14px',
+                            background: '#fff',
+                            color: 'var(--text-muted)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 'var(--radius-sm)',
+                            fontSize: 12,
+                            cursor: dismissingId !== null ? 'not-allowed' : 'pointer',
+                            opacity: dismissingId !== null && dismissingId !== finding.id ? 0.4 : 1,
+                          }}
                         >
                           Dismiss
                         </button>
@@ -1008,7 +1108,8 @@ export default function EventDetailModal({ event, onClose, onStatusChange, userR
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
 
               {/* Notes */}
               <div style={{ marginTop: 8 }}>

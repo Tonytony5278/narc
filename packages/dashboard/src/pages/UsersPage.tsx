@@ -11,10 +11,17 @@ import { useAuth } from '../hooks/useAuth';
 const ROLES = ['agent', 'supervisor', 'admin'] as const;
 type Role = (typeof ROLES)[number];
 
+/** Human-readable display labels for role slugs */
+export const ROLE_LABELS: Record<string, string> = {
+  admin:      'Administrator',
+  supervisor: 'Supervisor',
+  agent:      'Case Manager',
+};
+
 const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
-  admin:      { bg: '#FED7D7', text: '#C53030' },
-  supervisor: { bg: '#FEFCBF', text: '#744210' },
-  agent:      { bg: '#EBF4FF', text: '#2B6CB0' },
+  admin:      { bg: '#FEE2E2', text: '#991B1B' },
+  supervisor: { bg: '#FEF3C7', text: '#7A4F00' },
+  agent:      { bg: '#EBF4FF', text: '#1A4A6B' },
 };
 
 function formatDate(iso: string | null | undefined): string {
@@ -79,13 +86,13 @@ function AddUserForm({ onCreated, onCancel }: AddUserFormProps) {
           <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#718096', textTransform: 'uppercase', marginBottom: 4 }}>Email</label>
           <input
             type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-            placeholder="nurse@clinic.ca" autoFocus style={inputStyle}
+            placeholder="casemanager@org.ca" autoFocus style={inputStyle}
           />
         </div>
         <div>
           <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#718096', textTransform: 'uppercase', marginBottom: 4 }}>Role</label>
           <select value={role} onChange={(e) => setRole(e.target.value as Role)} style={inputStyle}>
-            {ROLES.map((r) => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
+            {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r] ?? r}</option>)}
           </select>
         </div>
         <div>
@@ -155,7 +162,7 @@ function UserRow({ user, isSelf, onRoleChange, onToggleActive }: UserRowProps) {
           }}
         >
           {ROLES.map((r) => (
-            <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+            <option key={r} value={r}>{ROLE_LABELS[r] ?? r}</option>
           ))}
         </select>
       </td>

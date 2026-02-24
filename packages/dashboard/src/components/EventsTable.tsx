@@ -11,6 +11,8 @@ interface EventsTableProps {
   onStatusChange: (id: string, status: string) => void;
   onDelete?: (id: string) => void;
   userRole?: string;
+  /** Tab to open by default when a case is clicked (e.g. 'e2b' on Regulatory page) */
+  defaultTab?: string;
 }
 
 const SEVERITY_BORDER: Record<string, string> = {
@@ -49,7 +51,7 @@ function SkeletonRow() {
   );
 }
 
-export default function EventsTable({ events, loading, onStatusChange, onDelete, userRole }: EventsTableProps) {
+export default function EventsTable({ events, loading, onStatusChange, onDelete, userRole, defaultTab }: EventsTableProps) {
   const [selectedEvent, setSelectedEvent] = useState<EventRecord | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -291,6 +293,7 @@ export default function EventsTable({ events, loading, onStatusChange, onDelete,
           onClose={() => setSelectedEvent(null)}
           onStatusChange={(id, status) => { onStatusChange(id, status); setSelectedEvent(null); }}
           userRole={userRole}
+          defaultTab={defaultTab}
         />
       )}
     </>
