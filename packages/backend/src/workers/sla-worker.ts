@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { getOpenEventsForSla, updateEventSla } from '../db/queries/events';
+import { getOpenCallsForSla, updateCallSla } from '../db/queries/calls';
 import { computeSlaStatus, RESOLVED_STATUSES } from '../services/sla';
 import { auditLog } from '../services/audit';
 import { sendSLAAlert } from '../services/alertService';
@@ -61,6 +62,50 @@ async function tickSla(): Promise<void> {
         previousStatus: event.sla_status,
         newStatus: sla_status,
       }).catch((err) => console.error('[SLA] Alert error:', err));
+    }
+  }
+
+  // Also process calls
+  const calls = await getOpenCallsForSla();
+
+  for (const call of calls) {
+    const isResolved = RESOLVED_STATUSES.has(call.status);
+    const { sla_status, escalation_level } = computeSlaStatus(
+      new Date(call.detected_at),
+      new Date(call.deadline_at),
+      isResolved
+    );
+
+    if (sla_status !== call.sla_status || escalation_level !== call.escalation_level) {
+      await updateCallSla(call.id, sla_status, escalation_level);
+
+      await auditLog({
+        actor: SYSTEM_ACTOR,
+        action: AuditActions.SLA_ESCALATION,
+        entityType: 'call',
+        entityId: call.id,
+        before: { sla_status: call.sla_status, escalation_level: call.escalation_level },
+        after:  { sla_status, escalation_level },
+      });
+
+      if (sla_status === 'breached') {
+        console.warn(`[SLA] 🚨 Call ${call.id} BREACHED SLA (${call.max_severity} severity)`);
+      } else if (sla_status === 'at_risk') {
+        console.warn(`[SLA] ⚠️  Call ${call.id} AT RISK — escalation level ${escalation_level} (${call.max_severity})`);
+      }
+
+      sendSLAAlert({
+        eventId: call.id,
+        subject: '[Call Recording] (see dashboard)',
+        sender: '',
+        maxSeverity: call.max_severity,
+        deadlineAt: call.deadline_at instanceof Date
+          ? call.deadline_at.toISOString()
+          : String(call.deadline_at),
+        escalationLevel: escalation_level,
+        previousStatus: call.sla_status,
+        newStatus: sla_status,
+      }).catch((err) => console.error('[SLA] Call alert error:', err));
     }
   }
 }

@@ -9,10 +9,11 @@ import PolicyPage from './pages/PolicyPage';
 import MonographPage from './pages/MonographPage';
 import UsersPage from './pages/UsersPage';
 import MonitorPage from './pages/MonitorPage';
+import CallsPage from './pages/CallsPage';
 import type { EventsFilter } from './api/client';
 import { clearAllEvents } from './api/client';
 
-type ActiveTab = 'events' | 'audit' | 'policy' | 'monographs' | 'users' | 'monitor';
+type ActiveTab = 'events' | 'calls' | 'audit' | 'policy' | 'monographs' | 'users' | 'monitor';
 
 export default function App() {
   const { user, isAuthenticated, isAdmin, login, logout } = useAuth();
@@ -112,6 +113,7 @@ export default function App() {
             </div>
           </div>
           {navBtn('events', 'Events')}
+          {navBtn('calls', '📞 Calls')}
           {navBtn('audit', 'Audit Log', true)}
           {navBtn('policy', 'Policy', true)}
           {navBtn('monographs', 'Monographs', true)}
@@ -189,6 +191,9 @@ export default function App() {
             />
           </>
         )}
+
+        {/* ── Calls tab ── */}
+        {tab === 'calls' && <CallsPage />}
 
         {/* ── Audit Log tab ── */}
         {tab === 'audit' && <AuditLogPage />}
