@@ -1,12 +1,18 @@
 import React from 'react';
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
-  pending:       { label: 'Pending',       bg: '#FFF3CD', color: '#856404' },
-  reviewed:      { label: 'Reviewed',      bg: '#D1ECF1', color: '#0C5460' },
-  reported:      { label: 'Reported',      bg: '#D4EDDA', color: '#155724' },
-  dismissed:     { label: 'Dismissed',     bg: '#F8F9FA', color: '#6C757D' },
-  escalated:     { label: 'Escalated',     bg: '#F8D7DA', color: '#721C24' },
-  false_positive:{ label: 'False Positive', bg: '#E2E3E5', color: '#383D41' },
+  pending:         { label: 'Pending',         bg: '#FFF3CD', color: '#856404' },
+  pending_review:  { label: 'Pending Review',  bg: '#FFF3CD', color: '#856404' },
+  reviewed:        { label: 'Reviewed',        bg: '#D1ECF1', color: '#0C5460' },
+  reported:        { label: 'Reported',        bg: '#D4EDDA', color: '#155724' },
+  dismissed:       { label: 'Dismissed',       bg: '#F8F9FA', color: '#6C757D' },
+  escalated:       { label: 'Escalated',       bg: '#F8D7DA', color: '#721C24' },
+  false_positive:  { label: 'False Positive',  bg: '#E2E3E5', color: '#383D41' },
+  on_track:        { label: 'On Track',        bg: '#D4EDDA', color: '#155724' },
+  at_risk:         { label: 'At Risk',         bg: '#FFF3CD', color: '#856404' },
+  breached:        { label: 'Breached',        bg: '#F8D7DA', color: '#721C24' },
+  met:             { label: 'Met',             bg: '#D4EDDA', color: '#155724' },
+  transcription_failed: { label: 'Failed',     bg: '#F8D7DA', color: '#721C24' },
 };
 
 const SEVERITY_CONFIG: Record<string, { label: string; bg: string; color: string }> = {

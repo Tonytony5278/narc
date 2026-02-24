@@ -388,3 +388,137 @@ export async function deactivateUser(id: string): Promise<void> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as { error?: string }).error ?? `Failed to deactivate user: ${res.statusText}`);
 }
+
+// ─── Calls ────────────────────────────────────────────────────────────────────
+
+export interface CallFindingRecord {
+  id: string;
+  call_id: string;
+  category: string;
+  severity: string;
+  urgency: string;
+  excerpt: string;
+  explanation: string;
+  confidence: number | null;
+  status: string;
+  highlight_start: number | null;
+  highlight_end: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CallRecord {
+  id: string;
+  external_call_id: string | null;
+  platform: string;
+  agent_id: string | null;
+  agent_email: string | null;
+  patient_ref: string | null;
+  drug_name: string | null;
+  direction: string;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  recording_url: string | null;
+  transcript: string | null;
+  transcript_language: string | null;
+  ae_count: number;
+  max_severity: string;
+  status: string;
+  notes: string | null;
+  detected_at: string | null;
+  deadline_at: string | null;
+  sla_status: string;
+  escalation_level: number;
+  policy_version_id: string | null;
+  model_version: string | null;
+  created_at: string;
+  updated_at: string;
+  findings: CallFindingRecord[];
+}
+
+export interface CallsFilter {
+  status?: string;
+  severity?: string;
+  platform?: string;
+  from?: string;
+  to?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function fetchCalls(filter: CallsFilter = {}): Promise<{ calls: CallRecord[]; total: number }> {
+  const params = new URLSearchParams();
+  if (filter.status)   params.set('status', filter.status);
+  if (filter.severity) params.set('severity', filter.severity);
+  if (filter.platform) params.set('platform', filter.platform);
+  if (filter.from)     params.set('from', filter.from);
+  if (filter.to)       params.set('to', filter.to);
+  if (filter.search)   params.set('search', filter.search);
+  if (filter.limit)    params.set('limit', String(filter.limit));
+  if (filter.offset)   params.set('offset', String(filter.offset));
+
+  const res = await apiFetch(`/calls?${params}`);
+  if (!res.ok) throw new Error(`Failed to fetch calls: ${res.statusText}`);
+  return res.json() as Promise<{ calls: CallRecord[]; total: number }>;
+}
+
+export async function fetchCall(id: string): Promise<{ call: CallRecord; findings: CallFindingRecord[] }> {
+  const res = await apiFetch(`/calls/${id}`);
+  if (!res.ok) throw new Error(`Call not found: ${res.statusText}`);
+  return res.json() as Promise<{ call: CallRecord; findings: CallFindingRecord[] }>;
+}
+
+export async function updateCallStatus(
+  id: string,
+  status: string,
+  notes?: string
+): Promise<void> {
+  const res = await apiFetch(`/calls/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, notes }),
+  });
+  if (!res.ok) throw new Error(`Failed to update call: ${res.statusText}`);
+}
+
+export async function updateCallFindingStatus(
+  callId: string,
+  findingId: string,
+  status: string
+): Promise<void> {
+  const res = await apiFetch(`/calls/${callId}/findings/${findingId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error(`Failed to update call finding: ${res.statusText}`);
+}
+
+export async function uploadCallRecording(
+  file: File,
+  metadata: {
+    platform?: string;
+    drugName?: string;
+    patientRef?: string;
+    agentEmail?: string;
+  }
+): Promise<{ callId: string }> {
+  const form = new FormData();
+  form.append('audio', file);
+  if (metadata.platform)   form.append('platform', metadata.platform);
+  if (metadata.drugName)   form.append('drugName', metadata.drugName);
+  if (metadata.patientRef) form.append('patientRef', metadata.patientRef);
+  if (metadata.agentEmail) form.append('agentEmail', metadata.agentEmail);
+
+  const token = getToken();
+  const res = await fetch(`${BASE}/calls/ingest`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error ?? `Upload failed: ${res.statusText}`);
+  }
+  return res.json() as Promise<{ callId: string }>;
+}
