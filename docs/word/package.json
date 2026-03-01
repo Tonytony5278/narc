@@ -1,0 +1,12 @@
+{
+  "name": "panierclair-word-generator",
+  "version": "1.0.0",
+  "description": "Generates DOCX deliverables for PanierClair",
+  "type": "module",
+  "scripts": {
+    "generate": "node generate.mjs"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1"
+  }
+}
