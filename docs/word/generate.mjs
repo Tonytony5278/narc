@@ -282,7 +282,7 @@ function buildFooterXml(docName) {
       <w:jc w:val="center"/>
       <w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr>
     </w:pPr>
-    <w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">PanierClair — ${xe(docName)} | Mars 2026    Page </w:t></w:r>
+    <w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">PanierClair — ${xe(docName)} | Mars 2026 — Page </w:t></w:r>
     <w:fldChar w:fldCharType="begin"/>
     <w:instrText> PAGE </w:instrText>
     <w:fldChar w:fldCharType="end"/>
